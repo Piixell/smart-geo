@@ -1,0 +1,1071 @@
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, ChevronDown, Edit, Trash2, Check, X } from 'lucide-react';
+import { supabase } from '../services/supabase';
+import { useAuthStore } from '../store/authStore';
+import type { ComuneCatasto, StatoGenerale, TipoIncarico } from '../types';
+import toast from 'react-hot-toast';
+
+export const ComuneCatastoPage: React.FC = () => {
+  const [pratiche, setPratiche] = useState<ComuneCatasto[]>([]);
+  const [stati, setStati] = useState<StatoGenerale[]>([]);
+  const [tipiIncarico, setTipiIncarico] = useState<TipoIncarico[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filtroStato, setFiltroStato] = useState('');
+  const [filtroTipoIncarico, setFiltroTipoIncarico] = useState('');
+  const [filtriAttivi, setFiltriAttivi] = useState({
+    comune: false,
+    catasto: false,
+    nonCompletati: false,
+    nonPagati: false,
+    completateNonPagate: false
+  });
+  const [showModal, setShowModal] = useState(false);
+  const [editingPratica, setEditingPratica] = useState<ComuneCatasto | null>(null);
+  const [formData, setFormData] = useState({
+    committente: '',
+    stato: '',
+    proprieta: '',
+    indirizzo: '',
+    citta: '',
+    telefono: '',
+    mail: '',
+    tipo_incarico: '',
+    comune: false,
+    catasto: false,
+    fine_lavori: false,
+    pagamento: false,
+    note: ''
+  });
+  const { user } = useAuthStore();
+
+  // Protezione contro errori delle estensioni del browser
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      // Ignora errori provenienti da estensioni del browser
+      if (event.filename && (
+        event.filename.includes('chrome-extension://') ||
+        event.filename.includes('moz-extension://') ||
+        event.filename.includes('safari-extension://') ||
+        event.message?.includes('UltraWide') ||
+        event.message?.includes('newValue')
+      )) {
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      // Ignora promise rejection da estensioni
+      if (event.reason && typeof event.reason === 'string' && (
+        event.reason.includes('chrome-extension://') ||
+        event.reason.includes('UltraWide') ||
+        event.reason.includes('newValue')
+      )) {
+        event.preventDefault();
+        return false;
+      }
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Carica pratiche con relazioni
+      let query = supabase
+        .from('comune_catasto')
+        .select(`
+          *,
+          stato_info:stati_generali(id, descrizione, colore),
+          tipo_incarico_info:tipi_incarico(id, descrizione, comune, catasto)
+        `)
+        .eq('user_id', user?.id)
+        .order('created_at', { ascending: false });
+
+      // Applica filtri
+      if (searchTerm) {
+        query = query.or(`committente.ilike.%${searchTerm}%,indirizzo.ilike.%${searchTerm}%,proprieta.ilike.%${searchTerm}%`);
+      }
+
+      if (filtroStato) {
+        query = query.eq('stato', parseInt(filtroStato));
+      }
+
+      if (filtroTipoIncarico) {
+        query = query.eq('tipo_incarico', parseInt(filtroTipoIncarico));
+      }
+
+      if (filtriAttivi.comune) {
+        query = query.eq('comune', true);
+      }
+
+      if (filtriAttivi.catasto) {
+        query = query.eq('catasto', true);
+      }
+
+      if (filtriAttivi.nonCompletati) {
+        query = query.eq('fine_lavori', false);
+      }
+
+      if (filtriAttivi.nonPagati) {
+        query = query.eq('pagamento', false);
+      }
+
+      if (filtriAttivi.completateNonPagate) {
+        query = query.eq('fine_lavori', true).eq('pagamento', false);
+      }
+
+      const { data: praticheData, error: praticheError } = await query;
+
+      if (praticheError) {
+        console.error('Errore nel caricamento pratiche:', praticheError);
+        toast.error('Errore nel caricamento delle pratiche');
+        return;
+      }
+
+      // Carica stati e tipi incarico per i dropdown
+      const [statiResult, tipiResult] = await Promise.all([
+        supabase.from('stati_generali').select('*').order('ordinamento'),
+        supabase.from('tipi_incarico').select('*').order('descrizione')
+      ]);
+
+      if (statiResult.error) {
+        console.error('Errore caricamento stati:', statiResult.error);
+      } else {
+        setStati(statiResult.data || []);
+      }
+
+      if (tipiResult.error) {
+        console.error('Errore caricamento tipi incarico:', tipiResult.error);
+      } else {
+        setTipiIncarico(tipiResult.data || []);
+      }
+
+      setPratiche(praticheData || []);
+    } catch (error) {
+      console.error('Errore:', error);
+      toast.error('Errore nel caricamento dei dati');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchData();
+    }
+  }, [user?.id]);
+
+  const handleSearch = () => {
+    fetchData();
+  };
+
+  const handleFilterToggle = (filterName: keyof typeof filtriAttivi) => {
+    setFiltriAttivi(prev => ({
+      ...prev,
+      [filterName]: !prev[filterName]
+    }));
+  };
+
+  const handleToggleField = async (pratica: ComuneCatasto, field: 'comune' | 'catasto' | 'fine_lavori' | 'pagamento') => {
+    try {
+      const newValue = !pratica[field];
+      
+      const { error } = await supabase
+        .from('comune_catasto')
+        .update({ [field]: newValue })
+        .eq('id', pratica.id)
+        .eq('user_id', user?.id);
+
+      if (error) {
+        toast.error(`Errore nell'aggiornamento del campo ${field}`);
+        return;
+      }
+
+      toast.success(`Campo ${field} aggiornato con successo`);
+      fetchData();
+    } catch (error) {
+      console.error('Errore:', error);
+      toast.error('Errore nell\'aggiornamento');
+    }
+  };
+
+  const handleDeletePratica = async (id: number) => {
+    if (!confirm('Sei sicuro di voler eliminare questa pratica?')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('comune_catasto')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user?.id);
+
+      if (error) {
+        toast.error('Errore nell\'eliminazione della pratica');
+        return;
+      }
+
+      toast.success('Pratica eliminata con successo');
+      fetchData();
+    } catch (error) {
+      console.error('Errore:', error);
+      toast.error('Errore nell\'eliminazione');
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    // Protezione contro eventi malformati da estensioni
+    if (!e || !e.target) {
+      console.warn('Evento malformato ignorato');
+      return;
+    }
+
+    const { name, value, type } = e.target;
+    
+    // Verifica che name sia definito
+    if (!name) {
+      console.warn('Nome campo non definito');
+      return;
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.committente.trim()) {
+      toast.error('Il campo committente è obbligatorio');
+      return;
+    }
+
+    try {
+      const dataToSave = {
+        ...formData,
+        stato: formData.stato ? parseInt(formData.stato) : null,
+        tipo_incarico: formData.tipo_incarico ? parseInt(formData.tipo_incarico) : null,
+        user_id: user?.id
+      };
+
+      if (editingPratica) {
+        // Modifica pratica esistente
+        const { error } = await supabase
+          .from('comune_catasto')
+          .update(dataToSave)
+          .eq('id', editingPratica.id)
+          .eq('user_id', user?.id);
+
+        if (error) {
+          console.error('Errore modifica:', error);
+          toast.error('Errore nella modifica della pratica');
+          return;
+        }
+
+        toast.success('Pratica modificata con successo');
+      } else {
+        // Crea nuova pratica
+        const { error } = await supabase
+          .from('comune_catasto')
+          .insert([dataToSave]);
+
+        if (error) {
+          console.error('Errore inserimento:', error);
+          toast.error('Errore nel salvataggio della pratica');
+          return;
+        }
+
+        toast.success('Pratica creata con successo');
+      }
+
+      closeModal();
+      fetchData();
+    } catch (error) {
+      console.error('Errore:', error);
+      toast.error('Errore nel salvataggio');
+    }
+  };
+
+  const openModal = (pratica?: ComuneCatasto) => {
+    if (pratica) {
+      // Modalità modifica
+      setEditingPratica(pratica);
+      setFormData({
+        committente: pratica.committente,
+        stato: pratica.stato?.toString() || '',
+        proprieta: pratica.proprieta || '',
+        indirizzo: pratica.indirizzo || '',
+        citta: pratica.citta || '',
+        telefono: pratica.telefono || '',
+        mail: pratica.mail || '',
+        tipo_incarico: pratica.tipo_incarico?.toString() || '',
+        comune: pratica.comune,
+        catasto: pratica.catasto,
+        fine_lavori: pratica.fine_lavori,
+        pagamento: pratica.pagamento,
+        note: pratica.note || ''
+      });
+    } else {
+      // Modalità creazione
+      setEditingPratica(null);
+      setFormData({
+        committente: '',
+        stato: '',
+        proprieta: '',
+        indirizzo: '',
+        citta: '',
+        telefono: '',
+        mail: '',
+        tipo_incarico: '',
+        comune: false,
+        catasto: false,
+        fine_lavori: false,
+        pagamento: false,
+        note: ''
+      });
+    }
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingPratica(null);
+    setFormData({
+      committente: '',
+      stato: '',
+      proprieta: '',
+      indirizzo: '',
+      citta: '',
+      telefono: '',
+      mail: '',
+      tipo_incarico: '',
+      comune: false,
+      catasto: false,
+      fine_lavori: false,
+      pagamento: false,
+      note: ''
+    });
+  };
+
+  const getStatoStyle = (stato: StatoGenerale | undefined) => {
+    if (!stato) return 'bg-gray-100 text-gray-800';
+    
+    // Mappiamo i colori comuni a classi Tailwind
+    const colorMap: { [key: string]: string } = {
+      '#10b981': 'bg-green-500 text-white',
+      '#22c55e': 'bg-green-500 text-white', 
+      '#ef4444': 'bg-red-500 text-white',
+      '#f59e0b': 'bg-yellow-500 text-white',
+      '#3b82f6': 'bg-blue-500 text-white',
+      '#8b5cf6': 'bg-purple-500 text-white',
+      '#06b6d4': 'bg-cyan-500 text-white',
+      '#84cc16': 'bg-lime-500 text-white',
+      'green': 'bg-green-500 text-white',
+      'red': 'bg-red-500 text-white',
+      'blue': 'bg-blue-500 text-white',
+      'yellow': 'bg-yellow-500 text-white',
+      'purple': 'bg-purple-500 text-white',
+    };
+    
+    return colorMap[stato.colore] || 'bg-gray-500 text-white';
+  };
+
+  const renderCheckIcon = (value: boolean) => {
+    return value ? (
+      <Check className="w-4 h-4 text-green-600" />
+    ) : (
+      <X className="w-4 h-4 text-gray-400" />
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Comune e Catasto</h1>
+          <p className="text-gray-600 dark:text-gray-300">Gestione pratiche</p>
+        </div>
+        <button
+          onClick={() => openModal()}
+          className="btn btn-primary flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          Nuova Pratica
+        </button>
+      </div>
+
+      {/* Filtri */}
+      <div className="card space-y-4 dark:bg-gray-800 dark:border-gray-700">
+        {/* Prima riga - Ricerca e dropdown */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Campo di ricerca */}
+          <div className="relative">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="Cerca committente, indirizzo..."
+              className="input pl-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+            />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+            <button
+              onClick={handleSearch}
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-500 text-white p-1 rounded"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Filtro Stati */}
+          <div className="relative">
+            <select
+              value={filtroStato}
+              onChange={(e) => setFiltroStato(e.target.value)}
+              className="input pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            >
+              <option value="">-- Tutti gli stati --</option>
+              {stati.map((stato) => (
+                <option key={stato.id} value={stato.id}>
+                  {stato.descrizione}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+          </div>
+
+          {/* Filtro Tipi Incarico */}
+          <div className="relative">
+            <select
+              value={filtroTipoIncarico}
+              onChange={(e) => setFiltroTipoIncarico(e.target.value)}
+              className="input pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            >
+              <option value="">-- Tutti i tipi di incarico --</option>
+              {tipiIncarico.map((tipo) => (
+                <option key={tipo.id} value={tipo.id}>
+                  {tipo.descrizione}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+          </div>
+        </div>
+
+        {/* Seconda riga - Filtri toggle */}
+        <div className="flex flex-wrap gap-4">
+          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+            filtriAttivi.comune 
+              ? 'bg-purple-600 text-white shadow-md' 
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}>
+            <input
+              type="checkbox"
+              checked={filtriAttivi.comune}
+              onChange={() => handleFilterToggle('comune')}
+              className="sr-only"
+            />
+            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+              filtriAttivi.comune 
+                ? 'border-white bg-white' 
+                : 'border-gray-400 dark:border-gray-500 bg-transparent'
+            }`}>
+              {filtriAttivi.comune && (
+                <svg className="w-3 h-3 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              )}
+            </div>
+            <span className="text-sm font-medium">Comune</span>
+          </label>
+
+          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+            filtriAttivi.catasto 
+              ? 'bg-indigo-600 text-white shadow-md' 
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}>
+            <input
+              type="checkbox"
+              checked={filtriAttivi.catasto}
+              onChange={() => handleFilterToggle('catasto')}
+              className="sr-only"
+            />
+            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+              filtriAttivi.catasto 
+                ? 'border-white bg-white' 
+                : 'border-gray-400 dark:border-gray-500 bg-transparent'
+            }`}>
+              {filtriAttivi.catasto && (
+                <svg className="w-3 h-3 text-indigo-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              )}
+            </div>
+            <span className="text-sm font-medium">Catasto</span>
+          </label>
+
+          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+            filtriAttivi.nonCompletati 
+              ? 'bg-orange-600 text-white shadow-md' 
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}>
+            <input
+              type="checkbox"
+              checked={filtriAttivi.nonCompletati}
+              onChange={() => handleFilterToggle('nonCompletati')}
+              className="sr-only"
+            />
+            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+              filtriAttivi.nonCompletati 
+                ? 'border-white bg-white' 
+                : 'border-gray-400 dark:border-gray-500 bg-transparent'
+            }`}>
+              {filtriAttivi.nonCompletati && (
+                <svg className="w-3 h-3 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              )}
+            </div>
+            <span className="text-sm font-medium">Non completati</span>
+          </label>
+
+          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+            filtriAttivi.nonPagati 
+              ? 'bg-blue-600 text-white shadow-md' 
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}>
+            <input
+              type="checkbox"
+              checked={filtriAttivi.nonPagati}
+              onChange={() => handleFilterToggle('nonPagati')}
+              className="sr-only"
+            />
+            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+              filtriAttivi.nonPagati 
+                ? 'border-white bg-white' 
+                : 'border-gray-400 dark:border-gray-500 bg-transparent'
+            }`}>
+              {filtriAttivi.nonPagati && (
+                <svg className="w-3 h-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              )}
+            </div>
+            <span className="text-sm font-medium">Non pagati</span>
+          </label>
+
+          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+            filtriAttivi.completateNonPagate 
+              ? 'bg-green-600 text-white shadow-md' 
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}>
+            <input
+              type="checkbox"
+              checked={filtriAttivi.completateNonPagate}
+              onChange={() => handleFilterToggle('completateNonPagate')}
+              className="sr-only"
+            />
+            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+              filtriAttivi.completateNonPagate 
+                ? 'border-white bg-white' 
+                : 'border-gray-400 dark:border-gray-500 bg-transparent'
+            }`}>
+              {filtriAttivi.completateNonPagate && (
+                <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              )}
+            </div>
+            <span className="text-sm font-medium">Completate non pagate</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Tabella */}
+      <div className="card p-0 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Stato
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Committente
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Indirizzo
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Città
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Proprietario
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Telefono
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Mail
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Note
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Tipo Incarico
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Comune
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Catasto
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Fine Lavori
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Pagamento
+                </th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Azioni
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {loading ? (
+                <tr>
+                  <td colSpan={14} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      <span className="ml-2">Caricamento...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : pratiche.length === 0 ? (
+                <tr>
+                  <td colSpan={14} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    Nessuna pratica trovata
+                  </td>
+                </tr>
+              ) : (
+                pratiche.map((pratica) => (
+                  <tr key={pratica.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(pratica.stato_info)}`}>
+                        {pratica.stato_info?.descrizione || 'N/A'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {pratica.committente}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                      {pratica.indirizzo || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                      {pratica.citta || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                      {pratica.proprieta || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                      {pratica.telefono || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                      {pratica.mail || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 max-w-xs truncate">
+                      {pratica.note || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                      {pratica.tipo_incarico_info?.descrizione || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => handleToggleField(pratica, 'comune')}
+                        className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                        title="Clicca per cambiare stato"
+                      >
+                        {renderCheckIcon(pratica.comune)}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => handleToggleField(pratica, 'catasto')}
+                        className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                        title="Clicca per cambiare stato"
+                      >
+                        {renderCheckIcon(pratica.catasto)}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => handleToggleField(pratica, 'fine_lavori')}
+                        className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                        title="Clicca per cambiare stato"
+                      >
+                        {renderCheckIcon(pratica.fine_lavori)}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => handleToggleField(pratica, 'pagamento')}
+                        className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                        title="Clicca per cambiare stato"
+                      >
+                        {renderCheckIcon(pratica.pagamento)}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => openModal(pratica)}
+                          className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors p-1"
+                          title="Modifica"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeletePratica(pratica.id)}
+                          className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 transition-colors p-1"
+                          title="Elimina"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal Nuova Pratica */}
+      {showModal && (
+        <div className="modal-overlay">
+          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                {editingPratica ? 'Modifica Pratica' : 'Nuova Pratica'}
+              </h2>
+              <button
+                onClick={closeModal}
+                className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Prima colonna */}
+                <div className="space-y-4">
+                  {/* Committente */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Committente *
+                    </label>
+                    <input
+                      type="text"
+                      name="committente"
+                      value={formData.committente}
+                      onChange={handleInputChange}
+                      placeholder="Nome committente"
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      required
+                    />
+                  </div>
+
+                  {/* Stato */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Stato
+                    </label>
+                    <div className="relative">
+                      <select
+                        name="stato"
+                        value={formData.stato}
+                        onChange={handleInputChange}
+                        className="input w-full pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      >
+                        <option value="">-- Seleziona stato --</option>
+                        {stati.map((stato) => (
+                          <option key={stato.id} value={stato.id}>
+                            {stato.descrizione}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                    </div>
+                  </div>
+
+                  {/* Proprietà */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Proprietà
+                    </label>
+                    <input
+                      type="text"
+                      name="proprieta"
+                      value={formData.proprieta}
+                      onChange={handleInputChange}
+                      placeholder="Nome proprietario"
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+
+                  {/* Indirizzo */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Indirizzo
+                    </label>
+                    <input
+                      type="text"
+                      name="indirizzo"
+                      value={formData.indirizzo}
+                      onChange={handleInputChange}
+                      placeholder="Indirizzo"
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+
+                  {/* Città */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Città
+                    </label>
+                    <input
+                      type="text"
+                      name="citta"
+                      value={formData.citta}
+                      onChange={handleInputChange}
+                      placeholder="Città"
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+
+                  {/* Telefono */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Telefono
+                    </label>
+                    <input
+                      type="tel"
+                      name="telefono"
+                      value={formData.telefono}
+                      onChange={handleInputChange}
+                      placeholder="Numero di telefono"
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+                </div>
+
+                {/* Seconda colonna */}
+                <div className="space-y-4">
+                  {/* Email */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      name="mail"
+                      value={formData.mail}
+                      onChange={handleInputChange}
+                      placeholder="Indirizzo email"
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+
+                  {/* Tipo Incarico */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Tipo Incarico
+                    </label>
+                    <div className="relative">
+                      <select
+                        name="tipo_incarico"
+                        value={formData.tipo_incarico}
+                        onChange={handleInputChange}
+                        className="input w-full pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      >
+                        <option value="">-- Seleziona tipo incarico --</option>
+                        {tipiIncarico.map((tipo) => (
+                          <option key={tipo.id} value={tipo.id}>
+                            {tipo.descrizione}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                    </div>
+                  </div>
+
+                  {/* Checkboxes con stile migliorato */}
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <label className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all duration-200 border-2 ${
+                        formData.comune 
+                          ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500 text-purple-700 dark:text-purple-300' 
+                          : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          name="comune"
+                          checked={formData.comune}
+                          onChange={handleInputChange}
+                          className="sr-only"
+                        />
+                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
+                          formData.comune 
+                            ? 'border-purple-500 bg-purple-500' 
+                            : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                        }`}>
+                          {formData.comune && (
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium">Comune</span>
+                      </label>
+
+                      <label className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all duration-200 border-2 ${
+                        formData.catasto 
+                          ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-700 dark:text-indigo-300' 
+                          : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          name="catasto"
+                          checked={formData.catasto}
+                          onChange={handleInputChange}
+                          className="sr-only"
+                        />
+                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
+                          formData.catasto 
+                            ? 'border-indigo-500 bg-indigo-500' 
+                            : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                        }`}>
+                          {formData.catasto && (
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium">Catasto</span>
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <label className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all duration-200 border-2 ${
+                        formData.fine_lavori 
+                          ? 'bg-green-50 dark:bg-green-900/20 border-green-500 text-green-700 dark:text-green-300' 
+                          : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          name="fine_lavori"
+                          checked={formData.fine_lavori}
+                          onChange={handleInputChange}
+                          className="sr-only"
+                        />
+                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
+                          formData.fine_lavori 
+                            ? 'border-green-500 bg-green-500' 
+                            : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                        }`}>
+                          {formData.fine_lavori && (
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium">Fine Lavori</span>
+                      </label>
+
+                      <label className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all duration-200 border-2 ${
+                        formData.pagamento 
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300' 
+                          : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          name="pagamento"
+                          checked={formData.pagamento}
+                          onChange={handleInputChange}
+                          className="sr-only"
+                        />
+                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
+                          formData.pagamento 
+                            ? 'border-blue-500 bg-blue-500' 
+                            : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                        }`}>
+                          {formData.pagamento && (
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium">Pagamento</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Note */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Note
+                    </label>
+                    <textarea
+                      name="note"
+                      value={formData.note}
+                      onChange={handleInputChange}
+                      placeholder="Note aggiuntive"
+                      rows={4}
+                      className="input w-full resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-sm text-gray-500 dark:text-gray-400">* Campo obbligatorio</p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  >
+                    {editingPratica ? 'Modifica' : 'Salva'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}; 
