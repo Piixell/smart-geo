@@ -9,7 +9,6 @@ import {
 import {
   DndContext,
   DragOverlay,
-  MouseSensor,
   TouchSensor,
   PointerSensor,
   useSensor,
