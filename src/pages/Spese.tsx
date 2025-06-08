@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, X, Filter, Calendar, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, X, Calendar, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/authStore';
 import type { Scadenza } from '../types';
