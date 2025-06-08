@@ -14,6 +14,8 @@ import {
   useSensor,
   useSensors,
   closestCenter,
+  pointerWithin,
+  rectIntersection,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
@@ -103,7 +105,7 @@ const DraggableTask: React.FC<DraggableTaskProps> = ({ task, category, onEdit, o
         group bg-white dark:bg-gray-800 rounded-lg mb-1 shadow-sm border border-gray-200 dark:border-gray-700
         cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-200 text-xs
         ${isDragging ? 'opacity-50 rotate-1 scale-105' : ''}
-        relative overflow-hidden touch-manipulation
+        relative overflow-hidden touch-manipulation select-none
       `}
     >
       {/* Striscetta colorata a sinistra */}
@@ -114,7 +116,7 @@ const DraggableTask: React.FC<DraggableTaskProps> = ({ task, category, onEdit, o
       
       <div className="flex items-start justify-between p-2 pl-3">
         <div className="flex-1 min-w-0 pr-2">
-          <p className="font-medium text-gray-900 dark:text-white text-xs leading-relaxed break-words">
+          <p className="font-medium text-gray-900 dark:text-white text-xs leading-relaxed break-words select-none">
             {task.description}
           </p>
         </div>
@@ -144,9 +146,12 @@ interface GridCellProps {
 }
 
 const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDelete }) => {
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef, isOver, active } = useDroppable({
     id: `${category.id}-${day}`,
   });
+
+  // Controlla se l'elemento che stiamo trascinando può essere droppato qui
+  const canDrop = active && active.id !== `${category.id}-${day}`;
 
   return (
     <div 
@@ -154,7 +159,9 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
       className={`
         group min-h-[120px] p-2 border border-gray-200 dark:border-gray-700 transition-all duration-200
         bg-white dark:bg-gray-800 relative
-        ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600' : ''}
+        ${isOver && canDrop ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600 border-2' : ''}
+        ${canDrop && !isOver ? 'border-dashed border-gray-400 dark:border-gray-500' : ''}
+        ${tasks.length > 3 ? 'min-h-[180px]' : 'min-h-[120px]'}
       `}
     >
       {/* Bottone + per aggiungere task (solo desktop) */}
@@ -189,6 +196,19 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
               onDelete={onDelete}
             />
           ))}
+          
+          {/* Zona di drop estesa per celle con molte task */}
+          {tasks.length > 3 && canDrop && (
+            <div className={`
+              h-8 rounded-lg border-2 border-dashed transition-all duration-200
+              ${isOver ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-600'}
+              flex items-center justify-center
+            `}>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {isOver ? 'Rilascia qui' : 'Zona di drop'}
+              </span>
+            </div>
+          )}
         </div>
       </SortableContext>
     </div>
@@ -214,6 +234,23 @@ export const Planner: React.FC = () => {
         -webkit-user-select: none !important;
         user-select: none !important;
       }
+      
+      /* Previeni selezione testo su mobile per il planner */
+      @media (max-width: 768px) {
+        .planner-container * {
+          -webkit-touch-callout: none !important;
+          -webkit-user-select: none !important;
+          -khtml-user-select: none !important;
+          -moz-user-select: none !important;
+          -ms-user-select: none !important;
+          user-select: none !important;
+          -webkit-tap-highlight-color: transparent !important;
+        }
+        
+        .planner-container {
+          -webkit-overflow-scrolling: touch;
+        }
+      }
     `;
     document.head.appendChild(style);
     
@@ -237,13 +274,13 @@ export const Planner: React.FC = () => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 10,
+        distance: 8,
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
         delay: 0,
-        tolerance: 30,
+        tolerance: 15,
       },
     })
   );
@@ -391,7 +428,10 @@ export const Planner: React.FC = () => {
     const { active, over } = event;
     
     if (!over) {
+      console.log('Drop fallito: nessun target trovato');
       setActiveId(null);
+      // Rimuovi classe di blocco touch
+      document.body.classList.remove('dnd-touch-fix');
       return;
     }
 
@@ -648,7 +688,7 @@ export const Planner: React.FC = () => {
   const activeTask = activeId ? tasks.find(task => task.id === activeId) : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 planner-container">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -696,7 +736,7 @@ export const Planner: React.FC = () => {
         ) : (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={pointerWithin}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
