@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, 
   ChevronLeft, 
@@ -10,6 +10,7 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   closestCenter,
@@ -96,7 +97,7 @@ const DraggableTask: React.FC<DraggableTaskProps> = ({ task, category, onEdit, o
         group bg-white dark:bg-gray-800 rounded-lg mb-1 shadow-sm border border-gray-200 dark:border-gray-700
         cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-200 text-xs
         ${isDragging ? 'opacity-50 rotate-1 scale-105' : ''}
-        relative overflow-hidden
+        relative overflow-hidden touch-manipulation select-none
       `}
     >
       {/* Striscetta colorata a sinistra */}
@@ -146,7 +147,7 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
       ref={setNodeRef}
       className={`
         group min-h-[120px] p-2 border border-gray-200 dark:border-gray-700 transition-all duration-200
-        bg-white dark:bg-gray-800 relative
+        bg-white dark:bg-gray-800 relative touch-manipulation
         ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600' : ''}
       `}
     >
@@ -161,10 +162,10 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
           window.dispatchEvent(addTaskEvent);
         }}
         className="
-          hidden md:flex absolute bottom-2 right-2 w-6 h-6 items-center justify-center
-          bg-blue-500 hover:bg-blue-600 text-white rounded-full text-sm font-bold
-          opacity-0 group-hover:opacity-100 transition-opacity duration-200
-          shadow-sm hover:shadow-md z-10
+          flex md:hidden absolute bottom-2 right-2 w-8 h-8 items-center justify-center
+          bg-blue-500 active:bg-blue-600 text-white rounded-full text-base font-bold
+          opacity-100 transition-all duration-200 shadow-md active:shadow-lg z-10
+          md:w-6 md:h-6 md:text-sm md:opacity-0 md:group-hover:opacity-100 md:hover:bg-blue-600
         "
         title="Aggiungi task"
       >
@@ -207,11 +208,18 @@ export const Planner: React.FC = () => {
     day: 'monday',
   });
   const [activeId, setActiveId] = useState<number | null>(null);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 8,
       },
     })
   );
@@ -316,9 +324,40 @@ export const Planner: React.FC = () => {
     };
   }, [categories]);
 
+  // Focus sul campo descrizione quando si apre il modal
+  useEffect(() => {
+    if (showModal && descriptionRef.current) {
+      const timer = setTimeout(() => {
+        descriptionRef.current?.focus();
+      }, 100); // Piccolo delay per assicurarsi che il modal sia completamente renderizzato
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showModal]);
+
+  // Gestione shortcut CTRL + INVIO per salvare
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (showModal && event.ctrlKey && event.key === 'Enter') {
+        event.preventDefault();
+        handleSaveTask();
+      }
+    };
+
+    if (showModal) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [showModal, formData]); // Include formData per avere accesso ai dati aggiornati
+
   // Gestione drag & drop
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(Number(event.active.id));
+    
+    // Feedback aptico su mobile (vibrazione se supportata)
+    if ('vibrate' in navigator && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+      navigator.vibrate(50);
+    }
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -681,12 +720,14 @@ export const Planner: React.FC = () => {
 
             <DragOverlay>
               {activeTask ? (
-                <DraggableTask
-                  task={activeTask}
-                  category={categories.find(c => c.id === activeTask.category) || categories[0]}
-                  onEdit={() => {}}
-                  onDelete={() => {}}
-                />
+                <div className="transform rotate-3 scale-110 opacity-90 shadow-2xl">
+                  <DraggableTask
+                    task={activeTask}
+                    category={categories.find(c => c.id === activeTask.category) || categories[0]}
+                    onEdit={() => {}}
+                    onDelete={() => {}}
+                  />
+                </div>
               ) : null}
             </DragOverlay>
           </DndContext>
@@ -711,10 +752,16 @@ export const Planner: React.FC = () => {
 
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Descrizione *
-                </label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Descrizione *
+                  </label>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Ctrl + Invio per salvare
+                  </span>
+                </div>
                 <textarea
+                  ref={descriptionRef}
                   value={formData.description}
                   onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   className="input w-full resize-none"
