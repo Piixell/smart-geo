@@ -55,7 +55,6 @@ const DAYS_OF_WEEK = [
   { key: 'thursday', label: 'Giovedì', short: 'GIO' },
   { key: 'friday', label: 'Venerdì', short: 'VEN' },
   { key: 'saturday', label: 'Sabato', short: 'SAB' },
-  { key: 'sunday', label: 'Domenica', short: 'DOM' },
 ];
 
 
@@ -134,6 +133,45 @@ const DraggableTask: React.FC<DraggableTaskProps> = ({ task, category, onEdit, o
   );
 };
 
+// Componente per le zone di drop laterali per cambio settimana
+interface WeekDropZoneProps {
+  direction: 'prev' | 'next';
+  isOver: boolean;
+  canDrop: boolean;
+}
+
+const WeekDropZone: React.FC<WeekDropZoneProps> = ({ direction, isOver, canDrop }) => {
+  const { setNodeRef } = useDroppable({
+    id: `week-${direction}`,
+  });
+
+  // Posizionamento identico per entrambe le zone all'interno del container
+  const positionClasses = direction === 'prev' 
+    ? 'absolute top-0 bottom-0 left-0 w-16 z-50' // Lato sinistro del planner
+    : 'absolute top-0 bottom-0 right-0 w-16 z-50'; // Lato destro del planner
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`
+        ${positionClasses}
+        transition-all duration-200 pointer-events-auto
+        ${canDrop ? 'bg-blue-500/30 border-2 border-blue-500 border-dashed' : 'bg-transparent'}
+        ${isOver && canDrop ? 'bg-blue-500/50' : ''}
+        flex flex-col items-center justify-center rounded-lg
+      `}
+    >
+      {canDrop && (
+        <div className="text-center text-white bg-blue-500 rounded-lg p-2 shadow-lg">
+          <div className="text-xs font-medium">
+            {direction === 'prev' ? '← Prec' : 'Succ →'}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Componente per le celle della griglia
 interface GridCellProps {
   category: PlannerCategory;
@@ -163,7 +201,7 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
       `}
       style={{ minHeight: Math.max(120, tasks.length * 45 + 60) + 'px' }}
     >
-      {/* Bottone + per aggiungere task (solo desktop) */}
+      {/* Bottone + per aggiungere task */}
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -174,10 +212,11 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
           window.dispatchEvent(addTaskEvent);
         }}
         className="
-          flex md:hidden absolute bottom-2 right-2 w-8 h-8 items-center justify-center
-          bg-blue-500 active:bg-blue-600 text-white rounded-full text-base font-bold
-          opacity-100 transition-all duration-200 shadow-md active:shadow-lg z-10
-          md:w-6 md:h-6 md:text-sm md:opacity-0 md:group-hover:opacity-100 md:hover:bg-blue-600
+          absolute bottom-2 right-2 w-8 h-8 items-center justify-center
+          bg-blue-500 hover:bg-blue-600 active:bg-blue-600 text-white rounded-full text-base font-bold
+          transition-all duration-200 shadow-md hover:shadow-lg z-20
+          md:w-6 md:h-6 md:text-sm md:opacity-0 md:group-hover:opacity-100
+          flex md:flex opacity-100 md:opacity-0
         "
         title="Aggiungi task"
       >
@@ -265,6 +304,7 @@ export const Planner: React.FC = () => {
     day: 'monday',
   });
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   const sensors = useSensors(
@@ -410,6 +450,7 @@ export const Planner: React.FC = () => {
   // Gestione drag & drop
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(Number(event.active.id));
+    setDragOver(null);
     
     // Aggiungi classe per bloccare il touch su tutto il documento durante il drag
     document.body.classList.add('dnd-touch-fix');
@@ -420,17 +461,64 @@ export const Planner: React.FC = () => {
     }
   };
 
+  const handleDragOver = (event: any) => {
+    const overId = event.over?.id || null;
+    setDragOver(overId);
+  };
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     
     if (!over) {
       setActiveId(null);
+      setDragOver(null);
       document.body.classList.remove('dnd-touch-fix');
       return;
     }
 
     const activeId = Number(active.id);
     const overId = over.id as string;
+
+    // Gestione cambio settimana
+    if (overId === 'week-prev' || overId === 'week-next') {
+      const direction = overId === 'week-prev' ? -7 : 7;
+      const newWeekStart = new Date(currentWeekStart);
+      newWeekStart.setDate(currentWeekStart.getDate() + direction);
+      const newWeekStartStr = newWeekStart.toISOString().split('T')[0];
+
+      // Sposta la task alla nuova settimana mantenendo categoria e giorno
+      const activeTask = tasks.find(t => t.id === activeId);
+      if (activeTask) {
+        setTasks(tasks => 
+          tasks.map(task => 
+            task.id === activeId 
+              ? { ...task, week_start_date: newWeekStartStr }
+              : task
+          )
+        );
+
+        supabase
+          .from('planner_tasks')
+          .update({ week_start_date: newWeekStartStr })
+          .eq('id', activeId)
+          .then(({ error }) => {
+            if (error) {
+              console.error('Errore spostamento settimana:', error);
+              toast.error('Errore nello spostamento della task');
+              loadTasks();
+            } else {
+              // Cambia settimana e ricarica
+              setCurrentWeekStart(newWeekStart);
+              toast.success(`Task spostata alla settimana ${direction > 0 ? 'successiva' : 'precedente'}`);
+            }
+          });
+      }
+
+      setActiveId(null);
+      setDragOver(null);
+      document.body.classList.remove('dnd-touch-fix');
+      return;
+    }
 
     // Se stiamo trascinando su un'altra task (riordinamento)
     if (!overId.includes('-')) {
@@ -554,6 +642,7 @@ export const Planner: React.FC = () => {
     }
 
     setActiveId(null);
+    setDragOver(null);
     document.body.classList.remove('dnd-touch-fix');
   };
 
@@ -756,13 +845,28 @@ export const Planner: React.FC = () => {
             sensors={sensors}
             collisionDetection={pointerWithin}
             onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            {/* Griglia planner */}
-            <div className="overflow-x-auto">
-              <div className="min-w-[800px]">
+            {/* Container con zone di drop */}
+            <div className="relative">
+              {/* Zone di drop per cambio settimana - fuori dalla griglia */}
+              <WeekDropZone 
+                direction="prev" 
+                isOver={activeId !== null && dragOver === 'week-prev'} 
+                canDrop={activeId !== null} 
+              />
+              <WeekDropZone 
+                direction="next" 
+                isOver={activeId !== null && dragOver === 'week-next'} 
+                canDrop={activeId !== null} 
+              />
+              
+              {/* Griglia planner */}
+              <div className="overflow-x-auto" style={{ minHeight: '600px' }}>
+                <div className="min-w-[800px]">
                 {/* Header giorni */}
-                <div className="grid grid-cols-8 gap-0">
+                <div className="grid grid-cols-7 gap-0">
                   <div className="p-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 font-medium text-gray-700 dark:text-gray-300">
                     Categoria
                   </div>
@@ -776,7 +880,7 @@ export const Planner: React.FC = () => {
 
                 {/* Righe categorie */}
                 {categories.map((category) => (
-                  <div key={category.id} className="grid grid-cols-8 gap-0">
+                  <div key={category.id} className="grid grid-cols-7 gap-0">
                     {/* Nome categoria */}
                     <div className="p-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center">
                       <div className="flex items-center gap-2">
@@ -803,6 +907,7 @@ export const Planner: React.FC = () => {
                     ))}
                   </div>
                 ))}
+                </div>
               </div>
             </div>
 
