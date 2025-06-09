@@ -278,7 +278,7 @@ CREATE TABLE planner_tasks (
   user_id UUID REFERENCES auth.users DEFAULT auth.uid(),
   description TEXT NOT NULL,
   day VARCHAR(20) NOT NULL,
-  category VARCHAR(50),
+  category INTEGER REFERENCES planner_categories(id),
   week_start_date DATE NOT NULL,
   order_position INTEGER DEFAULT 0,
   created_at TIMESTAMP DEFAULT NOW(),

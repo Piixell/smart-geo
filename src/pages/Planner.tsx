@@ -57,7 +57,28 @@ const DAYS_OF_WEEK = [
   { key: 'saturday', label: 'Sabato', short: 'SAB' },
 ];
 
+// Funzione helper per calcolare il lunedì della settimana
+const getMondayOfWeek = (date: Date): Date => {
+  const monday = new Date(date);
+  const dayOfWeek = monday.getDay();
+  
+  // Se è domenica (0), torna indietro di 6 giorni
+  // Altrimenti torna indietro di (dayOfWeek - 1) giorni
+  const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  monday.setDate(monday.getDate() - daysToSubtract);
+  // Imposta sempre a mezzanotte per evitare problemi di fuso orario
+  monday.setHours(0, 0, 0, 0);
+  
+  return monday;
+};
 
+// Funzione helper per convertire data in formato YYYY-MM-DD locale
+const formatDateLocal = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 // Componente per le task trascinabili
 interface DraggableTaskProps {
@@ -67,7 +88,7 @@ interface DraggableTaskProps {
   onDelete: (taskId: number) => void;
 }
 
-const DraggableTask: React.FC<DraggableTaskProps> = ({ task, category, onEdit, onDelete }) => {
+const DraggableTask: React.FC<DraggableTaskProps> = ({ task, category, onEdit, onDelete }: DraggableTaskProps) => {
   const {
     attributes,
     listeners,
@@ -140,7 +161,7 @@ interface WeekDropZoneProps {
   canDrop: boolean;
 }
 
-const WeekDropZone: React.FC<WeekDropZoneProps> = ({ direction, isOver, canDrop }) => {
+const WeekDropZone: React.FC<WeekDropZoneProps> = ({ direction, isOver, canDrop }: WeekDropZoneProps) => {
   const { setNodeRef } = useDroppable({
     id: `week-${direction}`,
   });
@@ -181,7 +202,7 @@ interface GridCellProps {
   onDelete: (taskId: number) => void;
 }
 
-const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDelete }) => {
+const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDelete }: GridCellProps) => {
   const { setNodeRef, isOver, active } = useDroppable({
     id: `${category.id}-${day}`,
   });
@@ -249,13 +270,7 @@ export const Planner: React.FC = () => {
   const { user } = useAuthStore();
   const [currentWeekStart, setCurrentWeekStart] = useState(() => {
     const today = new Date();
-    const monday = new Date(today);
-    // getDay() restituisce 0 per domenica, 1 per lunedì, etc.
-    // Per ottenere il lunedì: se oggi è domenica (0), sottraiamo 6 giorni
-    // altrimenti sottraiamo (getDay() - 1) giorni
-    const dayOfWeek = today.getDay();
-    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    monday.setDate(today.getDate() - daysToSubtract);
+    const monday = getMondayOfWeek(today);
     return monday;
   });
 
@@ -343,7 +358,10 @@ export const Planner: React.FC = () => {
   // Carica task dal database
   const loadTasks = async () => {
     try {
-      const weekStartStr = currentWeekStart.toISOString().split('T')[0];
+      const weekStartStr = formatDateLocal(currentWeekStart);
+      
+
+      
       const { data, error } = await supabase
         .from('planner_tasks')
         .select('*')
@@ -482,9 +500,10 @@ export const Planner: React.FC = () => {
     // Gestione cambio settimana
     if (overId === 'week-prev' || overId === 'week-next') {
       const direction = overId === 'week-prev' ? -7 : 7;
-      const newWeekStart = new Date(currentWeekStart);
-      newWeekStart.setDate(currentWeekStart.getDate() + direction);
-      const newWeekStartStr = newWeekStart.toISOString().split('T')[0];
+      const newWeekDate = new Date(currentWeekStart);
+      newWeekDate.setDate(currentWeekStart.getDate() + direction);
+      const newWeekStart = getMondayOfWeek(newWeekDate);
+      const newWeekStartStr = formatDateLocal(newWeekStart);
 
       // Sposta la task alla nuova settimana mantenendo categoria e giorno
       const activeTask = tasks.find(t => t.id === activeId);
@@ -679,9 +698,11 @@ export const Planner: React.FC = () => {
   };
 
   const handleDeleteTask = async (taskId: number) => {
+    console.log('🗑️ Tentativo eliminazione task:', taskId);
     if (!confirm('Sei sicuro di voler eliminare questa task?')) return;
 
     try {
+      console.log('🗑️ Eliminazione task dal database...');
       const { error } = await supabase
         .from('planner_tasks')
         .delete()
@@ -689,6 +710,7 @@ export const Planner: React.FC = () => {
 
       if (error) throw error;
       
+      console.log('🗑️ Task eliminata dal database, aggiorno stato locale...');
       setTasks(tasks => tasks.filter(t => t.id !== taskId));
       toast.success('Task eliminata con successo');
     } catch (error) {
@@ -704,7 +726,7 @@ export const Planner: React.FC = () => {
     }
 
     try {
-      const weekStartStr = currentWeekStart.toISOString().split('T')[0];
+      const weekStartStr = formatDateLocal(currentWeekStart);
       
       if (editingTask) {
         const taskData = {
@@ -777,6 +799,15 @@ export const Planner: React.FC = () => {
     });
   };
 
+  // Vai alla settimana corrente
+  const goToCurrentWeek = () => {
+    const today = new Date();
+    const monday = getMondayOfWeek(today);
+    setCurrentWeekStart(monday);
+  };
+
+
+
   // Ottieni task per categoria e giorno (ordinate per order_position)
   const getTasksForCategoryAndDay = (categoryId: number, day: string) => {
     return tasks
@@ -822,9 +853,17 @@ export const Planner: React.FC = () => {
             <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
           </button>
           
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            {formatWeekRange()}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              {formatWeekRange()}
+            </h2>
+            <button
+              onClick={goToCurrentWeek}
+              className="px-3 py-1 text-sm bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
+            >
+              Oggi
+            </button>
+          </div>
           
           <button
             onClick={() => navigateWeek('next')}
