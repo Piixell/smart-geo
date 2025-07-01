@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Search, ChevronDown, Edit, Trash2, Check, X } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/authStore';
@@ -6,6 +7,7 @@ import type { ComuneCatasto, StatoGenerale, TipoIncarico } from '../types';
 import toast from 'react-hot-toast';
 
 export const ComuneCatastoPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [pratiche, setPratiche] = useState<ComuneCatasto[]>([]);
   const [stati, setStati] = useState<StatoGenerale[]>([]);
   const [tipiIncarico, setTipiIncarico] = useState<TipoIncarico[]>([]);
@@ -42,6 +44,16 @@ export const ComuneCatastoPage: React.FC = () => {
     note: ''
   });
   const { user } = useAuthStore();
+
+  // Gestione parametri URL per filtri automatici
+  useEffect(() => {
+    const filter = searchParams.get('filter');
+    if (filter === 'non_completati') {
+      setFiltriAttivi(prev => ({ ...prev, nonCompletati: true }));
+    } else if (filter === 'completate_non_pagate') {
+      setFiltriAttivi(prev => ({ ...prev, completateNonPagate: true }));
+    }
+  }, [searchParams]);
 
   // Gestione shortcut CTRL+INVIO per salvare
   useEffect(() => {

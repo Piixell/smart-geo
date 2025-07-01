@@ -580,18 +580,45 @@ export const Spese: React.FC = () => {
               </div>
 
               {/* Pagamento */}
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  name="pagamento"
-                  checked={formData.pagamento}
-                  onChange={handleInputChange}
-                  className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:bg-gray-700"
-                />
-                <label className="ml-2 text-sm text-gray-700 dark:text-gray-300">Pagamento</label>
-                <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-                  Questo campo verrà automaticamente compilato quando flaggi il pagamento
-                </span>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Stato Pagamento
+                </label>
+                <label className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all duration-200 border-2 ${
+                  formData.pagamento 
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-600 text-green-800 dark:text-green-300' 
+                    : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                }`}>
+                  <input
+                    type="checkbox"
+                    name="pagamento"
+                    checked={formData.pagamento}
+                    onChange={handleInputChange}
+                    className="sr-only"
+                  />
+                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                    formData.pagamento 
+                      ? 'border-green-500 bg-green-500' 
+                      : 'border-gray-400 dark:border-gray-500 bg-transparent'
+                  }`}>
+                    {formData.pagamento && (
+                      <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">
+                      {formData.pagamento ? 'Pagamento completato' : 'Da pagare'}
+                    </span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {formData.pagamento 
+                        ? 'La scadenza risulterà come pagata' 
+                        : 'La scadenza risulterà come non pagata'
+                      }
+                    </p>
+                  </div>
+                </label>
               </div>
 
               {/* Data Pagamento */}

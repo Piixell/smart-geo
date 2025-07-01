@@ -168,8 +168,8 @@ const WeekDropZone: React.FC<WeekDropZoneProps> = ({ direction, isOver, canDrop 
 
   // Posizionamento identico per entrambe le zone all'interno del container
   const positionClasses = direction === 'prev' 
-    ? 'absolute top-0 bottom-0 left-0 w-16 z-50' // Lato sinistro del planner
-    : 'absolute top-0 bottom-0 right-0 w-16 z-50'; // Lato destro del planner
+    ? 'fixed top-0 bottom-0 left-0 w-16 z-50' // Lato sinistro del planner
+    : 'fixed top-0 bottom-0 right-0 w-16 z-50'; // Lato destro del planner
 
   return (
     <div
@@ -237,7 +237,7 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
           bg-blue-500 hover:bg-blue-600 active:bg-blue-600 text-white rounded-full text-base font-bold
           transition-all duration-200 shadow-md hover:shadow-lg z-20
           md:w-6 md:h-6 md:text-sm md:opacity-0 md:group-hover:opacity-100
-          flex md:flex opacity-100 md:opacity-0
+          flex md:flex opacity-100
         "
         title="Aggiungi task"
       >
