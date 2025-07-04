@@ -91,7 +91,7 @@ export const Dashboard: React.FC = () => {
       // Query parallele per ottimizzare le performance
       const [
         praticheComuneAperteResult,
-        praticheCompletateNonPagateResult,
+        praticheNonPagateResult,
         apeNonPagateResult,
         varieNonPagateResult,
         speseImmimentiResult,
@@ -107,24 +107,23 @@ export const Dashboard: React.FC = () => {
           .neq('stato', 2) // Non completato
           .eq('tipi_incarico.comune', true),
 
-        // Pratiche completate non pagate: stato = 2 (completato) e pagamento = false
+        // Pratiche non pagate: pagamento = 0
         supabase
           .from('comune_catasto')
           .select('id')
-          .eq('stato', 2)
-          .eq('pagamento', false),
+          .eq('pagamento', 0),
 
-        // APE non pagate: pagamento = false
+        // APE non pagate: pagamento = 0
         supabase
           .from('ape')
           .select('id')
-          .eq('pagamento', false),
+          .eq('pagamento', 0),
 
-        // Varie non pagate: pagamento = false
+        // Varie non pagate: pagamento = 0
         supabase
           .from('varie')
           .select('id')
-          .eq('pagamento', false),
+          .eq('pagamento', 0),
 
         // Spese imminenti: scadenza entro 30 giorni o senza data e non pagate
         (() => {
@@ -138,7 +137,7 @@ export const Dashboard: React.FC = () => {
               *,
               stato_info:stati_scadenze(*)
             `)
-            .eq('pagamento', false)
+            .eq('pagamento', 0)
             .or(`data_scadenza.lte.${thirtyDaysFromNow.toISOString().split('T')[0]},data_scadenza.is.null`)
             .order('data_scadenza', { ascending: true, nullsFirst: false });
         })(),
@@ -159,7 +158,7 @@ export const Dashboard: React.FC = () => {
       // Elabora i risultati
       const newStats = {
         pratiche_comune_aperte: 0,
-        pratiche_completate_non_pagate: praticheCompletateNonPagateResult.data?.length || 0,
+        pratiche_completate_non_pagate: praticheNonPagateResult.data?.length || 0,
         ape_completate_non_pagate: apeNonPagateResult.data?.length || 0,
         varie_completate_non_pagate: varieNonPagateResult.data?.length || 0,
         scadenze_in_arrivo: speseImmimentiResult.data?.length || 0,
@@ -226,7 +225,7 @@ export const Dashboard: React.FC = () => {
 
   const handlePraticheDaPagareClick = () => {
     // Naviga alla pagina comune-catasto con filtro per pratiche completate non pagate
-    navigate('/comune-catasto?filter=completate_non_pagate');
+    navigate('/comune-catasto?filter=non_pagate');
   };
 
   const handleApeClick = () => {

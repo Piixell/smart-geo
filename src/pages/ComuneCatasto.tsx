@@ -48,12 +48,27 @@ export const ComuneCatastoPage: React.FC = () => {
   // Gestione parametri URL per filtri automatici
   useEffect(() => {
     const filter = searchParams.get('filter');
+    let newFiltriAttivi = { ...filtriAttivi };
+    
     if (filter === 'non_completati') {
-      setFiltriAttivi(prev => ({ ...prev, nonCompletati: true }));
+      newFiltriAttivi = { ...newFiltriAttivi, nonCompletati: true };
     } else if (filter === 'completate_non_pagate') {
-      setFiltriAttivi(prev => ({ ...prev, completateNonPagate: true }));
+      newFiltriAttivi = { ...newFiltriAttivi, completateNonPagate: true };
+    } else if (filter === 'non_pagate') {
+      newFiltriAttivi = { ...newFiltriAttivi, nonPagati: true };
     }
-  }, [searchParams]);
+    
+    // Solo se c'è un filtro da applicare e l'user è presente
+    if (filter && user?.id) {
+      setFiltriAttivi(newFiltriAttivi);
+      setCurrentPage(1);
+      // Esegui la ricerca con il nuovo filtro
+      fetchData({
+        filtriAttivi: newFiltriAttivi,
+        page: 1
+      });
+    }
+  }, [searchParams, user?.id]);
 
   // Gestione shortcut CTRL+INVIO per salvare
   useEffect(() => {
@@ -169,7 +184,7 @@ export const ComuneCatastoPage: React.FC = () => {
       }
 
       if (currentFiltriAttivi.nonCompletati) {
-        countQuery = countQuery.eq('fine_lavori', false);
+        countQuery = countQuery.neq('stato', 3);
       }
 
       if (currentFiltriAttivi.nonPagati) {
@@ -221,7 +236,7 @@ export const ComuneCatastoPage: React.FC = () => {
       }
 
       if (currentFiltriAttivi.nonCompletati) {
-        query = query.eq('fine_lavori', false);
+        query = query.neq('stato', 3);
       }
 
       if (currentFiltriAttivi.nonPagati) {
@@ -229,7 +244,7 @@ export const ComuneCatastoPage: React.FC = () => {
       }
 
       if (currentFiltriAttivi.completateNonPagate) {
-        query = query.eq('fine_lavori', true).eq('pagamento', false);
+        query = query.eq('stato', 3).eq('pagamento', false);
       }
 
       // Applica paginazione
