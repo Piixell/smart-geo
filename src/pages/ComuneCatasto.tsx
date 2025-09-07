@@ -106,6 +106,22 @@ export const ComuneCatastoPage: React.FC = () => {
     };
   }, [showModal, submitting]);
 
+  // Debug useEffect per monitorare i cambiamenti del formData
+  useEffect(() => {
+    console.log('📊 FORMDATA CHANGED:', formData);
+  }, [formData]);
+
+  // Debug useEffect per monitorare l'apertura del modal
+  useEffect(() => {
+    if (showModal) {
+      console.log('🎭 MODAL APERTO - formData attuale:', formData);
+      console.log('🎭 MODAL APERTO - editingPratica:', editingPratica ? { id: editingPratica.id, committente: editingPratica.committente } : null);
+      console.log('🎭 MODAL APERTO - duplicatingPratica:', duplicatingPratica ? { id: duplicatingPratica.id, committente: duplicatingPratica.committente } : null);
+    } else {
+      console.log('🎭 MODAL CHIUSO');
+    }
+  }, [showModal, formData, editingPratica, duplicatingPratica]);
+
   // Protezione contro errori delle estensioni del browser
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
@@ -704,11 +720,29 @@ export const ComuneCatastoPage: React.FC = () => {
   };
 
   const openModal = (pratica?: ComuneCatasto, praticaToDuplicate?: ComuneCatasto) => {
+    console.log('🚀 OPENMODAL chiamata con parametri:', {
+      pratica: pratica ? { id: pratica.id, committente: pratica.committente } : null,
+      praticaToDuplicate: praticaToDuplicate ? { id: praticaToDuplicate.id, committente: praticaToDuplicate.committente } : null,
+      duplicatingPratica: duplicatingPratica ? { id: duplicatingPratica.id, committente: duplicatingPratica.committente } : null
+    });
+
     if (praticaToDuplicate || duplicatingPratica) {
       // Modalità duplicazione - usa il parametro diretto se disponibile, altrimenti lo state
       const sourcePratica = praticaToDuplicate || duplicatingPratica;
+      console.log('🔄 Modalità DUPLICAZIONE - sourcePratica:', {
+        id: sourcePratica!.id,
+        committente: sourcePratica!.committente,
+        stato: sourcePratica!.stato,
+        tipo_incarico: sourcePratica!.tipo_incarico,
+        comune: sourcePratica!.comune,
+        catasto: sourcePratica!.catasto,
+        fine_lavori: sourcePratica!.fine_lavori,
+        pagamento: sourcePratica!.pagamento
+      });
+      
       setEditingPratica(null);
-      setFormData({
+      
+      const newFormData = {
         committente: sourcePratica!.committente,
         stato: sourcePratica!.stato?.toString() || '',
         proprieta: sourcePratica!.proprieta || '',
@@ -724,11 +758,19 @@ export const ComuneCatastoPage: React.FC = () => {
         fine_lavori: sourcePratica!.fine_lavori,
         pagamento: sourcePratica!.pagamento,
         note: sourcePratica!.note || ''
-      });
+      };
+      
+      console.log('📝 Impostando formData per duplicazione:', newFormData);
+      setFormData(newFormData);
     } else if (pratica) {
       // Modalità modifica
+      console.log('✏️ Modalità MODIFICA per pratica:', {
+        id: pratica.id,
+        committente: pratica.committente
+      });
+      
       setEditingPratica(pratica);
-      setFormData({
+      const editFormData = {
         committente: pratica.committente,
         stato: pratica.stato?.toString() || '',
         proprieta: pratica.proprieta || '',
@@ -744,11 +786,16 @@ export const ComuneCatastoPage: React.FC = () => {
         fine_lavori: pratica.fine_lavori,
         pagamento: pratica.pagamento,
         note: pratica.note || ''
-      });
+      };
+      
+      console.log('📝 Impostando formData per modifica:', editFormData);
+      setFormData(editFormData);
     } else {
       // Modalità creazione
+      console.log('➕ Modalità CREAZIONE nuova pratica');
+      
       setEditingPratica(null);
-      setFormData({
+      const newFormData = {
         committente: '',
         stato: '',
         proprieta: '',
@@ -764,13 +811,22 @@ export const ComuneCatastoPage: React.FC = () => {
         fine_lavori: false,
         pagamento: false,
         note: ''
-      });
+      };
+      
+      console.log('📝 Impostando formData per creazione:', newFormData);
+      setFormData(newFormData);
     }
+    
+    console.log('🎭 Aprendo modal, setShowModal(true)');
     setShowModal(true);
+    
     // Reset duplicatingPratica after modal is opened to ensure proper cleanup
     if (duplicatingPratica || praticaToDuplicate) {
+      console.log('🧹 Reset duplicatingPratica');
       setDuplicatingPratica(null);
     }
+    
+    console.log('✅ openModal completata');
   };
 
   const closeModal = () => {
@@ -1136,9 +1192,22 @@ export const ComuneCatastoPage: React.FC = () => {
                   className="btn btn-primary flex items-center gap-2"
                   disabled={selectedRows.size !== 1}
                   onClick={() => {
+                    console.log('🔄 DUPLICA PRATICA - Click del bottone');
+                    console.log('📊 selectedRows:', Array.from(selectedRows));
+                    console.log('📋 pratiche.length:', pratiche.length);
+                    
                     const selectedPratica = pratiche.find(p => selectedRows.has(p.id));
+                    console.log('🎯 selectedPratica trovata:', selectedPratica);
+                    
                     if (selectedPratica) {
+                      console.log('✅ Chiamando openModal con pratica:', {
+                        id: selectedPratica.id,
+                        committente: selectedPratica.committente,
+                        tipo_incarico: selectedPratica.tipo_incarico
+                      });
                       openModal(undefined, selectedPratica);
+                    } else {
+                      console.log('❌ Nessuna pratica selezionata trovata');
                     }
                   }}
                 >
@@ -1504,6 +1573,12 @@ export const ComuneCatastoPage: React.FC = () => {
       {/* Modal Nuova Pratica */}
       {showModal && (
         <div className="modal-overlay">
+          {/* Debug render modal */}
+          {(() => {
+            console.log('🎨 RENDERING MODAL con formData:', formData);
+            console.log('🎨 RENDERING MODAL - editingPratica:', editingPratica ? { id: editingPratica.id, committente: editingPratica.committente } : null);
+            return null;
+          })()}
           <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">
