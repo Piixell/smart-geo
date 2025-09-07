@@ -703,28 +703,28 @@ export const ComuneCatastoPage: React.FC = () => {
     }
   };
 
-  const openModal = (pratica?: ComuneCatasto) => {
-    if (duplicatingPratica) {
-      // Modalità duplicazione
+  const openModal = (pratica?: ComuneCatasto, praticaToDuplicate?: ComuneCatasto) => {
+    if (praticaToDuplicate || duplicatingPratica) {
+      // Modalità duplicazione - usa il parametro diretto se disponibile, altrimenti lo state
+      const sourcePratica = praticaToDuplicate || duplicatingPratica;
       setEditingPratica(null);
       setFormData({
-        committente: duplicatingPratica.committente,
-        stato: duplicatingPratica.stato?.toString() || '',
-        proprieta: duplicatingPratica.proprieta || '',
-        proprieta2: duplicatingPratica.proprieta2 || '',
-        indirizzo: duplicatingPratica.indirizzo || '',
-        citta: duplicatingPratica.citta || '',
-        telefono: duplicatingPratica.telefono || '',
-        telefono2: duplicatingPratica.telefono2 || '',
-        mail: duplicatingPratica.mail || '',
-        tipo_incarico: duplicatingPratica.tipo_incarico?.toString() || '',
-        comune: duplicatingPratica.comune,
-        catasto: duplicatingPratica.catasto,
-        fine_lavori: duplicatingPratica.fine_lavori,
-        pagamento: duplicatingPratica.pagamento,
-        note: duplicatingPratica.note || ''
+        committente: sourcePratica!.committente,
+        stato: sourcePratica!.stato?.toString() || '',
+        proprieta: sourcePratica!.proprieta || '',
+        proprieta2: sourcePratica!.proprieta2 || '',
+        indirizzo: sourcePratica!.indirizzo || '',
+        citta: sourcePratica!.citta || '',
+        telefono: sourcePratica!.telefono || '',
+        telefono2: sourcePratica!.telefono2 || '',
+        mail: sourcePratica!.mail || '',
+        tipo_incarico: sourcePratica!.tipo_incarico?.toString() || '',
+        comune: sourcePratica!.comune,
+        catasto: sourcePratica!.catasto,
+        fine_lavori: sourcePratica!.fine_lavori,
+        pagamento: sourcePratica!.pagamento,
+        note: sourcePratica!.note || ''
       });
-      setDuplicatingPratica(null);
     } else if (pratica) {
       // Modalità modifica
       setEditingPratica(pratica);
@@ -767,6 +767,10 @@ export const ComuneCatastoPage: React.FC = () => {
       });
     }
     setShowModal(true);
+    // Reset duplicatingPratica after modal is opened to ensure proper cleanup
+    if (duplicatingPratica || praticaToDuplicate) {
+      setDuplicatingPratica(null);
+    }
   };
 
   const closeModal = () => {
@@ -1134,8 +1138,7 @@ export const ComuneCatastoPage: React.FC = () => {
                   onClick={() => {
                     const selectedPratica = pratiche.find(p => selectedRows.has(p.id));
                     if (selectedPratica) {
-                      setDuplicatingPratica(selectedPratica);
-                      openModal();
+                      openModal(undefined, selectedPratica);
                     }
                   }}
                 >
