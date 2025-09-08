@@ -523,21 +523,25 @@ export const ComuneCatastoPage: React.FC = () => {
     }
   };
 
-  const formatTelefono2 = (value: string): string => {
-    // Rimuove tutti i caratteri non numerici
-    const numericValue = value.replace(/\D/g, '');
+  // Funzione per combinare i telefoni
+  const combineTelefoni = (telefono1: string | null | undefined, telefono2: string | null | undefined): string => {
+    const formatted1 = telefono1 ? formatTelefono(telefono1) : '';
+    const formatted2 = telefono2 ? formatTelefono(telefono2) : '';
     
-    // Limita a 10 cifre
-    const limitedValue = numericValue.slice(0, 10);
+    if (!formatted1 && !formatted2) return '-';
+    if (!formatted2) return formatted1;
+    if (!formatted1) return formatted2;
     
-    // Applica la formattazione XXX XXX XXXX
-    if (limitedValue.length <= 3) {
-      return limitedValue;
-    } else if (limitedValue.length <= 6) {
-      return `${limitedValue.slice(0, 3)} ${limitedValue.slice(3)}`;
-    } else {
-      return `${limitedValue.slice(0, 3)} ${limitedValue.slice(3, 6)} ${limitedValue.slice(6)}`;
-    }
+    return `${formatted1} / ${formatted2}`;
+  };
+
+  // Funzione per combinare le proprietà
+  const combineProprieta = (proprieta1: string | null | undefined, proprieta2: string | null | undefined): string => {
+    if (!proprieta1 && !proprieta2) return '-';
+    if (!proprieta2) return proprieta1 || '-';
+    if (!proprieta1) return proprieta2 || '-';
+    
+    return `${proprieta1} / ${proprieta2}`;
   };
 
   const handleRowSelection = (id: number) => {
@@ -587,7 +591,7 @@ export const ComuneCatastoPage: React.FC = () => {
     
     // Formatta il telefono2 se è il campo telefono2
     if (name === 'telefono2' && type !== 'checkbox') {
-      processedValue = formatTelefono2(value);
+      processedValue = formatTelefono(value);
     }
 
     setFormData(prev => ({
@@ -1204,13 +1208,7 @@ export const ComuneCatastoPage: React.FC = () => {
                   Proprietà
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Proprietà 2
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Telefono
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Telefono 2
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Mail
@@ -1241,7 +1239,7 @@ export const ComuneCatastoPage: React.FC = () => {
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={16} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={14} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="ml-2">Caricamento...</span>
@@ -1250,7 +1248,7 @@ export const ComuneCatastoPage: React.FC = () => {
                 </tr>
               ) : pratiche.length === 0 ? (
                 <tr>
-                  <td colSpan={16} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={14} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                     Nessuna pratica trovata
                   </td>
                 </tr>
@@ -1296,16 +1294,10 @@ export const ComuneCatastoPage: React.FC = () => {
                       {pratica.citta || '-'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {pratica.proprieta || '-'}
+                      {combineProprieta(pratica.proprieta, pratica.proprieta2)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {pratica.proprieta2 || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {pratica.telefono || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {pratica.telefono2 || '-'}
+                      {combineTelefoni(pratica.telefono, pratica.telefono2)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                       {pratica.mail || '-'}
