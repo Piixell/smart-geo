@@ -83,10 +83,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
               </div>
               <div className="hidden lg:block text-left min-w-0">
                 <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                  {user?.username || user?.email?.split('@')[0] || 'Utente'}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {user?.email}
+                  {user?.name || user?.username || 'Utente'} {user?.surname ? user?.surname.charAt(0).toUpperCase() + user?.surname.slice(1) : ''}
                 </div>
               </div>
             </button>
@@ -106,10 +103,10 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
                 }`}>
                   <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
                     <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                      {user?.username || 'Utente'}
+                      {user?.name || user?.username || 'Utente'} {user?.surname ? user?.surname.charAt(0).toUpperCase() + user?.surname.slice(1) : ''}
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                      {user?.email}
+                      {user?.email || ''}
                     </div>
                   </div>
                   

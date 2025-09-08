@@ -31,7 +31,7 @@ const getUserProfile = async (session: Session): Promise<AuthUser | null> => {
     // Query per recuperare il profilo
     const profilePromise = supabase
       .from('profiles')
-      .select('*')
+      .select('id, username, name, surname, created_at')
       .eq('id', session.user.id)
       .single();
 
@@ -63,7 +63,9 @@ const getUserProfile = async (session: Session): Promise<AuthUser | null> => {
       return {
         id: session.user.id,
         email: session.user.email,
-        username
+        username,
+        name: username, // Fallback: use username as name
+        surname: '' // Fallback: empty surname
       };
     }
 
@@ -73,14 +75,18 @@ const getUserProfile = async (session: Session): Promise<AuthUser | null> => {
       return {
         id: session.user.id,
         email: session.user.email,
-        username: session.user.email.split('@')[0]
+        username: session.user.email.split('@')[0],
+        name: session.user.email.split('@')[0], // Fallback: use email prefix as name
+        surname: '' // Fallback: empty surname
       };
     }
 
     return {
       id: session.user.id,
       email: session.user.email,
-      username: profile?.username || session.user.email.split('@')[0]
+      username: profile?.username || session.user.email.split('@')[0],
+      name: profile?.name || profile?.username || session.user.email.split('@')[0],
+      surname: profile?.surname || ''
     };
   } catch (error) {
     console.error('Errore nel getUserProfile:', error);
@@ -88,7 +94,9 @@ const getUserProfile = async (session: Session): Promise<AuthUser | null> => {
     return {
       id: session.user.id,
       email: session.user.email,
-      username: session.user.email.split('@')[0]
+      username: session.user.email.split('@')[0],
+      name: session.user.email.split('@')[0],
+      surname: ''
     };
   }
 };
@@ -151,14 +159,16 @@ export const useAuthStore = create<AuthStore>()(
                       } catch (error) {
                         console.error('Errore nell\'elaborazione SIGNED_IN:', error);
                         // Fallback: usa solo i dati della sessione
-                        set((state) => ({ 
-                          ...state, 
+                        set((state) => ({
+                          ...state,
                           user: {
                             id: session.user.id,
                             email: session.user.email!,
-                            username: session.user.email!.split('@')[0]
-                          }, 
-                          loading: false 
+                            username: session.user.email!.split('@')[0],
+                            name: session.user.email!.split('@')[0],
+                            surname: ''
+                          },
+                          loading: false
                         }));
                       }
                     })();
