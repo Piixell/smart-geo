@@ -907,9 +907,11 @@ export const ComuneCatastoPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="h-full flex flex-col px-4">
+      
+      <div className="space-y-3 flex-1 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Comune e Catasto</h1>
           <p className="text-gray-600 dark:text-gray-300">Gestione pratiche</p>
@@ -1164,10 +1166,10 @@ export const ComuneCatastoPage: React.FC = () => {
         </div>
       )}
 
-      {/* Tabella */}
-      <div className="card p-0 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
-        <div className="overflow-x-auto max-h-[calc(100vh-200px)] overflow-y-auto">
-          <table className="w-full">
+      {/* Tabella - Container con altezza flessibile e scroll interno */}
+      <div className="card p-0 dark:bg-gray-800 dark:border-gray-700 flex-1" style={{ height: 'calc(100vh - 400px)', overflow: 'hidden' }}>
+        <div className="overflow-x-auto h-full overflow-y-auto">
+          <table className="w-full" style={{ minHeight: '400px' }}>
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -1506,7 +1508,7 @@ export const ComuneCatastoPage: React.FC = () => {
       {/* Modal Nuova Pratica */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl modal-scroll-container">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                 {editingPratica ? 'Modifica Pratica' : 'Nuova Pratica'}
@@ -1877,7 +1879,7 @@ export const ComuneCatastoPage: React.FC = () => {
       {/* Modal Cambio Stato */}
       {showStatusModal && (
         <div className="modal-overlay">
-          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md">
+          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md modal-scroll-container">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                 {confirmStatusChange ? 'Conferma Cambio Stato' : 'Seleziona Nuovo Stato'}
@@ -2002,6 +2004,7 @@ export const ComuneCatastoPage: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };
