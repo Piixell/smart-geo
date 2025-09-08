@@ -224,7 +224,7 @@ export const ComuneCatastoPage: React.FC = () => {
 
       // Applica filtri
       if (currentSearchTerm) {
-        query = query.or(`committente.ilike.%${currentSearchTerm}%,indirizzo.ilike.%${currentSearchTerm}%,proprieta.ilike.%${currentSearchTerm}%,proprieta2.ilike.%${currentSearchTerm}%`);
+        query = query.or(`committente.ilike.%${currentSearchTerm}%,indirizzo.ilike.%${currentSearchTerm}%,proprieta.ilike.%${currentSearchTerm}%,proprieta2.ilike.%${currentSearchTerm}%,mail.ilike.%${currentSearchTerm}%`);
       }
 
       if (currentFiltroStato) {
@@ -1166,7 +1166,7 @@ export const ComuneCatastoPage: React.FC = () => {
 
       {/* Tabella */}
       <div className="card p-0 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[calc(100vh-200px)] overflow-y-auto">
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>

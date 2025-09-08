@@ -66,12 +66,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
         {/* Right Side */}
         <div className="flex items-center gap-2 flex-shrink-0">
           {/* Notifications */}
-          <button className="relative p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-            <Bell className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-            {/* Notification badge */}
-            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full"></span>
-          </button>
-
+          
           {/* User Menu */}
           <div className="relative">
             <button
