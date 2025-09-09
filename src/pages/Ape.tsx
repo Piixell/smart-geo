@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Search, ChevronDown, Edit, Trash2, Check, X, Save } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/authStore';
@@ -19,9 +20,14 @@ interface ApeFormData {
 }
 
 export const ApePage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [pratiche, setPratiche] = useState<Ape[]>([]);
   const [stati, setStati] = useState<StatoApe[]>([]);
   const [loading, setLoading] = useState(true);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
+  const [manualRefreshNeeded, setManualRefreshNeeded] = useState(false);
+  const [forceRefresh, setForceRefresh] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroStato, setFiltroStato] = useState('');
   const [filtriAttivi, setFiltriAttivi] = useState({
@@ -45,7 +51,64 @@ export const ApePage: React.FC = () => {
     pagamento: false
   });
   const [submitting, setSubmitting] = useState(false);
-  const { user } = useAuthStore();
+  const { user, loading: authLoading } = useAuthStore();
+
+  // Gestione parametri URL per filtri automatici
+  useEffect(() => {
+    const filter = searchParams.get('filter');
+    let newFiltriAttivi = { ...filtriAttivi };
+    
+    if (filter === 'non_pagate') {
+      newFiltriAttivi = { ...newFiltriAttivi, soloNonPagate: true };
+    }
+    
+    // Solo se c'è un filtro da applicare e l'user è presente
+    if (filter && user?.id && !authLoading) {
+      setFiltriAttivi(newFiltriAttivi);
+      setCurrentPage(1);
+      // Esegui la ricerca con il nuovo filtro
+      fetchData({
+        filtriAttivi: newFiltriAttivi,
+        page: 1
+      });
+    }
+  }, [searchParams, user?.id, authLoading]);
+
+  // Protezione contro errori delle estensioni del browser
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      if (event.filename && (
+        event.filename.includes('chrome-extension://') ||
+        event.filename.includes('moz-extension://') ||
+        event.filename.includes('safari-extension://') ||
+        event.message?.includes('UltraWide') ||
+        event.message?.includes('newValue')
+      )) {
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason && typeof event.reason === 'string' && (
+        event.reason.includes('chrome-extension://') ||
+        event.reason.includes('UltraWide') ||
+        event.reason.includes('newValue')
+      )) {
+        event.preventDefault();
+        return false;
+      }
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
 
   const resetForm = () => {
     setFormData({
@@ -107,20 +170,34 @@ export const ApePage: React.FC = () => {
     }
   };
 
-  const handleInputChange = async (field: keyof ApeFormData, value: string | number | boolean | null) => {
-    // Formatta il numero di telefono se il campo è 'telefono'
-    if (field === 'telefono' && typeof value === 'string') {
-      value = formatPhoneNumber(value);
+  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    if (!e || !e.target) {
+      console.warn('Evento malformato ignorato');
+      return;
     }
+
+    const { name, value, type } = e.target;
     
+    if (!name) {
+      console.warn('Nome campo non definito');
+      return;
+    }
+
+    let processedValue = value;
+    
+    if (name === 'telefono' && type !== 'checkbox') {
+      processedValue = formatPhoneNumber(value);
+    }
+
     // Se stiamo cambiando lo stato di registrazione a "Completata" e non c'è un progressivo
-    if (field === 'registrazione' && typeof value === 'number' && !formData.progressivo.trim()) {
+    if (name === 'registrazione' && value && !formData.progressivo.trim()) {
       try {
-        const progressivoGenerato = await generaProgressivoAutomatico(value);
+        const statoId = parseInt(value);
+        const progressivoGenerato = await generaProgressivoAutomatico(statoId);
         if (progressivoGenerato) {
           setFormData(prev => ({
             ...prev,
-            [field]: value,
+            [name]: statoId,
             progressivo: progressivoGenerato
           }));
           toast.success('Progressivo generato automaticamente');
@@ -131,10 +208,10 @@ export const ApePage: React.FC = () => {
         // Continua con l'aggiornamento normale se c'è un errore
       }
     }
-    
+
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : processedValue
     }));
   };
 
@@ -215,6 +292,8 @@ export const ApePage: React.FC = () => {
     setSubmitting(true);
 
     try {
+      console.log('Submitting form data:', formData);
+      
       // Verifica se dobbiamo generare il progressivo automatico
       let progressivoFinale = formData.progressivo.trim();
       
@@ -237,8 +316,11 @@ export const ApePage: React.FC = () => {
         user_id: user?.id
       };
 
+      console.log('Data to submit:', dataToSubmit);
+
       if (editingPratica) {
-        // Modifica
+        console.log('Updating existing pratica:', editingPratica.id);
+        // Modifica - bypassa tutti i controlli e forza il refresh
         const { error } = await supabase
           .from('ape')
           .update({
@@ -254,13 +336,20 @@ export const ApePage: React.FC = () => {
           return;
         }
 
+        // Forza un refresh completo dei dati bypassando il realtime
+        console.log('Forcing complete data refresh after edit');
+        setForceRefresh(true);
+        await fetchData();
+        setForceRefresh(false);
+        
         if (progressivoFinale && !formData.progressivo.trim()) {
           toast.success('Pratica APE modificata e progressivo generato automaticamente');
         } else {
           toast.success('Pratica APE modificata con successo');
         }
       } else {
-        // Creazione
+        console.log('Creating new pratica');
+        // Creazione - forza anche il refresh per le nuove pratiche
         const { error } = await supabase
           .from('ape')
           .insert([dataToSubmit]);
@@ -271,6 +360,12 @@ export const ApePage: React.FC = () => {
           return;
         }
 
+        // Forza un refresh completo anche per le nuove pratiche
+        console.log('Forcing complete data refresh after creation');
+        setForceRefresh(true);
+        await fetchData();
+        setForceRefresh(false);
+
         if (progressivoFinale && !formData.progressivo.trim()) {
           toast.success('Pratica APE creata e progressivo generato automaticamente');
         } else {
@@ -279,7 +374,6 @@ export const ApePage: React.FC = () => {
       }
 
       closeModal();
-      fetchData();
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nell\'operazione');
@@ -298,14 +392,20 @@ export const ApePage: React.FC = () => {
     try {
       setLoading(true);
       
-      // Usa i filtri personalizzati o quelli dello stato corrente
+      // Verifica che l'utente sia autenticato
+      if (!user?.id) {
+        console.warn('Utente non autenticato, impossibile caricare i dati');
+        setLoading(false);
+        return;
+      }
+      
       const currentSearchTerm = customFilters?.searchTerm ?? searchTerm;
       const currentFiltroStato = customFilters?.filtroStato ?? filtroStato;
       const currentFiltriAttivi = customFilters?.filtriAttivi ?? filtriAttivi;
       const currentPageParam = customFilters?.page ?? currentPage;
       const currentPerPage = customFilters?.perPage ?? recordsPerPage;
       
-      // Prima query per contare il totale dei record
+      // Query per contare il totale
       let countQuery = supabase
         .from('ape')
         .select('*', { count: 'exact', head: true })
@@ -328,6 +428,10 @@ export const ApePage: React.FC = () => {
       
       if (countError) {
         console.error('Errore nel conteggio:', countError);
+        // Se l'errore è relativo alla sessione, mostra un messaggio specifico
+        if (countError.message?.includes('JWT') || countError.message?.includes('session')) {
+          toast.error('Sessione scaduta. Effettua nuovamente il login.');
+        }
       } else {
         setTotalRecords(count || 0);
       }
@@ -364,7 +468,12 @@ export const ApePage: React.FC = () => {
 
       if (praticheError) {
         console.error('Errore nel caricamento pratiche APE:', praticheError);
-        toast.error('Errore nel caricamento delle pratiche APE');
+        // Se l'errore è relativo alla sessione, mostra un messaggio specifico
+        if (praticheError.message?.includes('JWT') || praticheError.message?.includes('session')) {
+          toast.error('Sessione scaduta. Effettua nuovamente il login.');
+        } else {
+          toast.error('Errore nel caricamento delle pratiche APE');
+        }
         return;
       }
 
@@ -390,10 +499,133 @@ export const ApePage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (user?.id) {
-      fetchData();
-    }
-  }, [user?.id]);
+    // Aspetta che l'autenticazione sia inizializzata
+    const initializeData = async () => {
+      // Attende che l'autenticazione sia completata
+      if (authLoading) {
+        console.log('Autenticazione in corso...');
+        return;
+      }
+      
+      // Se c'è un user, carica i dati
+      if (user?.id) {
+        console.log('User autenticato, caricamento dati...');
+        await fetchData();
+      }
+      // Se l'user è null ma lo store ha finito di caricare, significa che non è autenticato
+      else if (user === null) {
+        console.warn('User non autenticato');
+        setLoading(false);
+      }
+    };
+
+    initializeData();
+  }, [user?.id, authLoading]);
+
+  // Setup Supabase Realtime subscription
+  useEffect(() => {
+    if (!user?.id) return;
+
+    console.log('Setting up realtime subscription for user:', user.id);
+
+    // Create a channel for realtime updates
+    const channel = supabase
+      .channel('ape-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen for all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'ape',
+          filter: `user_id=eq.${user.id}` // Only listen to changes for current user
+        },
+        async (payload) => {
+          console.log('Realtime update received:', payload);
+          setLastUpdateTime(new Date());
+          setManualRefreshNeeded(false); // Reset manual refresh flag when realtime works
+          if (forceRefresh) {
+            console.log('Skipping realtime update due to force refresh');
+            return; // Skip realtime updates when force refresh is active
+          }
+          
+          // Simple update logic - just update the local state for any change
+          if (payload.eventType === 'INSERT') {
+            // For INSERT, fetch the complete record with joined data
+            const { data: newRecord, error } = await supabase
+              .from('ape')
+              .select(`
+                *,
+                registrazione_info:stati_ape(id, descrizione, colore)
+              `)
+              .eq('id', payload.new.id)
+              .single();
+
+            if (!error && newRecord) {
+              setPratiche(prev => {
+                // Check if it already exists to avoid duplicates
+                if (prev.some(p => p.id === newRecord.id)) {
+                  return prev;
+                }
+                return [newRecord, ...prev];
+              });
+              setTotalRecords(prev => prev + 1);
+              toast.success('Nuova pratica APE aggiunta');
+            }
+          }
+          else if (payload.eventType === 'UPDATE') {
+            // For UPDATE, fetch the complete record with joined data
+            const { data: updatedRecord, error } = await supabase
+              .from('ape')
+              .select(`
+                *,
+                registrazione_info:stati_ape(id, descrizione, colore)
+              `)
+              .eq('id', payload.new.id)
+              .single();
+
+            if (!error && updatedRecord) {
+              // Simple update - just replace the record in the array
+              setPratiche(prev =>
+                prev.map(pratica =>
+                  pratica.id === updatedRecord.id ? updatedRecord : pratica
+                )
+              );
+              
+              // Show specific toast based on what changed
+              const oldPratica = payload.old as Ape;
+              if (oldPratica.pagamento !== updatedRecord.pagamento) {
+                toast.success(updatedRecord.pagamento ? 'Pagamento marcato come effettuato' : 'Pagamento marcato come non effettuato');
+              }
+              if (oldPratica.registrazione !== updatedRecord.registrazione) {
+                const oldStato = stati.find(s => s.id === oldPratica.registrazione)?.descrizione || 'N/A';
+                const newStato = stati.find(s => s.id === updatedRecord.registrazione)?.descrizione || 'N/A';
+                toast.success(`Stato cambiato da "${oldStato}" a "${newStato}"`);
+              }
+            }
+          }
+          else if (payload.eventType === 'DELETE') {
+            // Remove deleted record
+            const deletedId = payload.old.id;
+            setPratiche(prev => prev.filter(pratica => pratica.id !== deletedId));
+            setTotalRecords(prev => Math.max(0, prev - 1));
+            toast.success('Pratica APE eliminata');
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('Subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          setRealtimeConnected(true);
+        }
+      });
+
+    // Cleanup subscription on unmount
+    return () => {
+      console.log('Cleaning up realtime subscription');
+      supabase.removeChannel(channel);
+      setRealtimeConnected(false);
+    };
+  }, [user?.id, stati]);
 
   const handleSearch = () => {
     fetchData();
@@ -436,10 +668,11 @@ export const ApePage: React.FC = () => {
   const handleTogglePagamento = async (pratica: Ape) => {
     try {
       const nuovoPagamento = !pratica.pagamento;
+      console.log('Toggling pagamento for pratica', pratica.id, 'from', pratica.pagamento, 'to', nuovoPagamento);
       
       const { error } = await supabase
         .from('ape')
-        .update({ 
+        .update({
           pagamento: nuovoPagamento,
           updated_at: new Date().toISOString()
         })
@@ -452,8 +685,21 @@ export const ApePage: React.FC = () => {
         return;
       }
 
+      // Forza un aggiornamento locale immediato per feedback visivo istantaneo
+      setPratiche(prev =>
+        prev.map(p =>
+          p.id === pratica.id ? { ...p, pagamento: nuovoPagamento } : p
+        )
+      );
+
       toast.success(nuovoPagamento ? 'Pagamento marcato come effettuato' : 'Pagamento marcato come non effettuato');
-      fetchData();
+      
+      // Se il realtime non funziona o stiamo forzando il refresh, marca che serve un refresh manuale
+      setTimeout(() => {
+        if (!realtimeConnected || forceRefresh) {
+          setManualRefreshNeeded(true);
+        }
+      }, 2000);
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nell\'aggiornamento del pagamento');
@@ -466,6 +712,8 @@ export const ApePage: React.FC = () => {
     }
 
     try {
+      console.log('Deleting pratica:', id);
+      
       const { error } = await supabase
         .from('ape')
         .delete()
@@ -477,8 +725,13 @@ export const ApePage: React.FC = () => {
         return;
       }
 
+      // Forza un refresh completo anche per l'eliminazione
+      console.log('Forcing complete data refresh after deletion');
+      setForceRefresh(true);
+      await fetchData();
+      setForceRefresh(false);
+
       toast.success('Pratica APE eliminata con successo');
-      fetchData();
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nell\'eliminazione');
@@ -486,56 +739,30 @@ export const ApePage: React.FC = () => {
   };
 
   const getStatoStyle = (stato: StatoApe | undefined) => {
-    if (!stato) {
-      return {
-        backgroundColor: '#f3f4f6',
-        color: '#374151'
-      };
-    }
-    
-    // Utilizza direttamente il colore dal database
-    const backgroundColor = stato.colore || '#6b7280';
-    
-    // Calcola automaticamente il colore del testo in base alla luminosità del background
-    const getTextColor = (bgColor: string) => {
-      // Rimuovi il # se presente
-      const hex = bgColor.replace('#', '');
-      
-      // Converti in RGB
-      const r = parseInt(hex.substr(0, 2), 16);
-      const g = parseInt(hex.substr(2, 2), 16);
-      const b = parseInt(hex.substr(4, 2), 16);
-      
-      // Calcola la luminosità
-      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      
-      // Restituisci bianco per sfondi scuri, nero per sfondi chiari
-      return luminance > 0.5 ? '#000000' : '#ffffff';
-    };
-    
-    return {
-      backgroundColor,
-      color: getTextColor(backgroundColor)
-    };
+    if (!stato || !stato.colore) return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
+    return `text-white`;
   };
 
-  const renderPagamentoToggle = (pratica: Ape) => {
+  const getStatoBackgroundColor = (stato: StatoApe | undefined) => {
+    if (!stato || !stato.colore) return '#6b7280';
+    return stato.colore;
+  };
+
+  const renderToggleButton = (value: boolean) => {
     return (
-      <button
-        onClick={() => handleTogglePagamento(pratica)}
+      <div
         className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 hover:scale-110 ${
-          pratica.pagamento 
-            ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50' 
+          value
+            ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50'
             : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600'
         }`}
-        title={pratica.pagamento ? 'Marcato come pagato - Clicca per rimuovere' : 'Non pagato - Clicca per marcare come pagato'}
       >
-        {pratica.pagamento ? (
+        {value ? (
           <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
         ) : (
           <X className="w-4 h-4 text-gray-400 dark:text-gray-500" />
         )}
-      </button>
+      </div>
     );
   };
 
@@ -550,20 +777,49 @@ export const ApePage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Gestione APE</h1>
           <p className="text-gray-600 dark:text-gray-300">Gestione pratiche APE</p>
+          {realtimeConnected && (
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-xs text-green-600 dark:text-green-400">
+                Aggiornamenti in tempo reale attivi
+                {lastUpdateTime && (
+                  <span className="ml-1 text-gray-500 dark:text-gray-400">
+                    (ultimo: {lastUpdateTime.toLocaleTimeString('it-IT')})
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
-        <button
-          onClick={openCreateModal}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Nuova Pratica APE
-        </button>
+        <div className="flex items-center gap-3">
+          {manualRefreshNeeded && (
+            <button
+              onClick={() => {
+                fetchData();
+                setManualRefreshNeeded(false);
+              }}
+              className="btn btn-outline flex items-center gap-2 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              title="Aggiorna dati"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Aggiorna
+            </button>
+          )}
+          <button
+            onClick={openCreateModal}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Nuova Pratica APE
+          </button>
+        </div>
       </div>
 
       {/* Filtri */}
       <div className="card space-y-4 dark:bg-gray-800 dark:border-gray-700">
-        {/* Filtri */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Campo di ricerca */}
           <div className="relative">
             <input
@@ -571,13 +827,13 @@ export const ApePage: React.FC = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Cerca..."
+              placeholder="Cerca committente, indirizzo..."
               className="input pl-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
             />
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
             <button
               onClick={handleSearch}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-emerald-500 text-white p-1 rounded"
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-500 text-white p-1 rounded"
             >
               <Search className="w-4 h-4" />
             </button>
@@ -608,34 +864,34 @@ export const ApePage: React.FC = () => {
             </select>
             <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
           </div>
+        </div>
 
-          {/* Filtro Non pagate */}
-          <div className="flex items-center">
-            <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 w-full justify-center ${
-              filtriAttivi.soloNonPagate 
-                ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+        {/* Filtri toggle */}
+        <div className="flex flex-wrap gap-4">
+          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+            filtriAttivi.soloNonPagate
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}>
+            <input
+              type="checkbox"
+              checked={filtriAttivi.soloNonPagate}
+              onChange={() => handleFilterToggle('soloNonPagate')}
+              className="sr-only"
+            />
+            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+              filtriAttivi.soloNonPagate
+                ? 'border-white bg-white'
+                : 'border-gray-400 dark:border-gray-500 bg-transparent'
             }`}>
-              <input
-                type="checkbox"
-                checked={filtriAttivi.soloNonPagate}
-                onChange={() => handleFilterToggle('soloNonPagate')}
-                className="sr-only"
-              />
-              <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
-                filtriAttivi.soloNonPagate 
-                  ? 'border-white bg-white' 
-                  : 'border-gray-400 dark:border-gray-500 bg-transparent'
-              }`}>
-                {filtriAttivi.soloNonPagate && (
-                  <svg className="w-3 h-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </div>
-              <span className="text-sm font-medium">Non pagate</span>
-            </label>
-          </div>
+              {filtriAttivi.soloNonPagate && (
+                <svg className="w-3 h-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              )}
+            </div>
+            <span className="text-sm font-medium">Non pagate</span>
+          </label>
         </div>
       </div>
 
@@ -702,9 +958,9 @@ export const ApePage: React.FC = () => {
                 {pratiche.map((pratica) => (
                   <tr key={pratica.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="px-4 py-3">
-                      <span 
-                        className="inline-flex px-2 py-1 text-xs font-semibold rounded"
-                        style={getStatoStyle(pratica.registrazione_info)}
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(pratica.registrazione_info)}`}
+                        style={{ backgroundColor: getStatoBackgroundColor(pratica.registrazione_info) }}
                       >
                         {pratica.registrazione_info?.descrizione || 'N/A'}
                       </span>
@@ -734,7 +990,13 @@ export const ApePage: React.FC = () => {
                       {pratica.progressivo || '-'}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {renderPagamentoToggle(pratica)}
+                      <button
+                        onClick={() => handleTogglePagamento(pratica)}
+                        className="transition-colors cursor-pointer"
+                        title="Clicca per cambiare stato"
+                      >
+                        {renderToggleButton(pratica.pagamento)}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                       {formatDate(pratica.created_at)}
@@ -890,187 +1152,175 @@ export const ApePage: React.FC = () => {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Prima riga - Committente e Proprietà */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Committente *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.committente}
-                    onChange={(e) => handleInputChange('committente', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="Nome del committente"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Proprietà
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.proprieta}
-                    onChange={(e) => handleInputChange('proprieta', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="Nome del proprietario"
-                  />
-                </div>
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Committente *
+                    </label>
+                    <input
+                      type="text"
+                      name="committente"
+                      required
+                      value={formData.committente}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Nome del committente"
+                    />
+                  </div>
 
-              {/* Seconda riga - Indirizzo e Città */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Indirizzo
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.indirizzo}
-                    onChange={(e) => handleInputChange('indirizzo', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="Via, numero civico"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Città
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.citta}
-                    onChange={(e) => handleInputChange('citta', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="Città"
-                  />
-                </div>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Proprietà
+                    </label>
+                    <input
+                      type="text"
+                      name="proprieta"
+                      value={formData.proprieta}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Nome del proprietario"
+                    />
+                  </div>
 
-              {/* Terza riga - Email e Telefono */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.mail}
-                    onChange={(e) => handleInputChange('mail', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="email@esempio.com"
-                  />
-                </div>
-                                 <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                     Telefono
-                   </label>
-                   <input
-                     type="tel"
-                     value={formData.telefono}
-                     onChange={(e) => handleInputChange('telefono', e.target.value)}
-                     className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                     placeholder="123 456 7890"
-                     maxLength={12}
-                   />
-                 </div>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Indirizzo
+                    </label>
+                    <input
+                      type="text"
+                      name="indirizzo"
+                      value={formData.indirizzo}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Via, numero civico"
+                    />
+                  </div>
 
-              {/* Quarta riga - Stato e Progressivo */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Stato Registrazione
-                  </label>
-                  <select
-                    value={formData.registrazione || ''}
-                    onChange={(e) => handleInputChange('registrazione', e.target.value ? parseInt(e.target.value) : null)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                  >
-                    <option value="">-- Seleziona stato --</option>
-                    {stati.map((stato) => (
-                      <option key={stato.id} value={stato.id}>
-                        {stato.descrizione}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Progressivo
-                    {formData.progressivo && formData.registrazione && stati.find(s => s.id === formData.registrazione && s.descrizione.toLowerCase().includes('completata')) && (
-                      <span className="ml-2 text-xs text-green-600 dark:text-green-400">(generato automaticamente)</span>
-                    )}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.progressivo}
-                    onChange={(e) => handleInputChange('progressivo', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="Sarà generato automaticamente quando 'Completata'"
-                  />
-                </div>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Città
+                    </label>
+                    <input
+                      type="text"
+                      name="citta"
+                      value={formData.citta}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Città"
+                    />
+                  </div>
 
-              {/* Note */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Note
-                </label>
-                <textarea
-                  value={formData.note}
-                  onChange={(e) => handleInputChange('note', e.target.value)}
-                  rows={3}
-                  className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white resize-none"
-                  placeholder="Note aggiuntive..."
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Telefono
+                    </label>
+                    <input
+                      type="tel"
+                      name="telefono"
+                      value={formData.telefono}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="XXX XXX XXXX"
+                    />
+                  </div>
+                </div>
 
-              {/* Checkbox Pagamento */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Stato Pagamento
-                </label>
-                <div className="flex items-center gap-4">
-                  <label className={`relative inline-flex items-center cursor-pointer p-3 rounded-lg border-2 transition-all duration-200 ${
-                    formData.pagamento 
-                      ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
-                      : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50'
-                  }`}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      name="mail"
+                      value={formData.mail}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="email@esempio.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Stato Registrazione
+                    </label>
                     <div className="relative">
+                      <select
+                        name="registrazione"
+                        value={formData.registrazione || ''}
+                        onChange={handleInputChange}
+                        className="input w-full pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      >
+                        <option value="">-- Seleziona stato --</option>
+                        {stati.map((stato) => (
+                          <option key={stato.id} value={stato.id}>
+                            {stato.descrizione}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Progressivo
+                      {formData.progressivo && formData.registrazione && stati.find(s => s.id === formData.registrazione && s.descrizione.toLowerCase().includes('completata')) && (
+                        <span className="ml-2 text-xs text-green-600 dark:text-green-400">(generato automaticamente)</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      name="progressivo"
+                      value={formData.progressivo}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Sarà generato automaticamente quando 'Completata'"
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${
+                      formData.pagamento
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300 cursor-pointer'
+                        : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                    }`}>
                       <input
                         type="checkbox"
+                        name="pagamento"
                         checked={formData.pagamento}
-                        onChange={(e) => handleInputChange('pagamento', e.target.checked)}
+                        onChange={handleInputChange}
                         className="sr-only"
                       />
-                      <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
-                        formData.pagamento 
-                          ? 'bg-green-500 border-green-500' 
-                          : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'
+                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
+                        formData.pagamento
+                          ? 'border-blue-500 bg-blue-500'
+                          : 'border-gray-300 dark:border-gray-500 bg-transparent'
                       }`}>
                         {formData.pagamento && (
-                          <Check className="w-4 h-4 text-white" />
+                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
                         )}
                       </div>
-                    </div>
-                    <div className="ml-3">
-                      <div className={`text-sm font-medium transition-colors ${
-                        formData.pagamento 
-                          ? 'text-green-700 dark:text-green-300' 
-                          : 'text-gray-700 dark:text-gray-300'
-                      }`}>
-                        {formData.pagamento ? 'Pagamento effettuato' : 'Pagamento in sospeso'}
-                      </div>
-                      <div className={`text-xs transition-colors ${
-                        formData.pagamento 
-                          ? 'text-green-600 dark:text-green-400' 
-                          : 'text-gray-500 dark:text-gray-400'
-                      }`}>
-                        {formData.pagamento ? 'La pratica è stata saldata' : 'In attesa di pagamento'}
-                      </div>
-                    </div>
-                  </label>
+                      <span className="text-sm font-medium">Pagamento</span>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Note
+                    </label>
+                    <textarea
+                      name="note"
+                      value={formData.note}
+                      onChange={handleInputChange}
+                      placeholder="Note aggiuntive"
+                      rows={4}
+                      className="input w-full resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
                 </div>
               </div>
 

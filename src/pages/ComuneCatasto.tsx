@@ -12,6 +12,8 @@ export const ComuneCatastoPage: React.FC = () => {
   const [stati, setStati] = useState<StatoGenerale[]>([]);
   const [tipiIncarico, setTipiIncarico] = useState<TipoIncarico[]>([]);
   const [loading, setLoading] = useState(true);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroStato, setFiltroStato] = useState('');
@@ -301,6 +303,131 @@ export const ComuneCatastoPage: React.FC = () => {
     }
   }, [user?.id]);
 
+  // Setup Supabase Realtime subscription per i flag
+  useEffect(() => {
+    if (!user?.id) return;
+
+    console.log('Setting up realtime subscription for ComuneCatasto flags, user:', user.id);
+
+    // Create a channel for realtime updates
+    const channel = supabase
+      .channel('comune-catasto-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen for all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'comune_catasto',
+          filter: `user_id=eq.${user.id}` // Only listen to changes for current user
+        },
+        async (payload) => {
+          console.log('Realtime update received for ComuneCatasto:', payload);
+          setLastUpdateTime(new Date());
+          
+          // Simple update logic - just update the local state for any change
+          if (payload.eventType === 'INSERT') {
+            // For INSERT, fetch the complete record with joined data
+            const { data: newRecord, error } = await supabase
+              .from('comune_catasto')
+              .select(`
+                *,
+                stato_info:stati_generali(id, descrizione, colore),
+                tipo_incarico_info:tipi_incarico(id, descrizione, comune, catasto)
+              `)
+              .eq('id', payload.new.id)
+              .single();
+
+            if (!error && newRecord) {
+              setPratiche(prev => {
+                // Check if it already exists to avoid duplicates
+                if (prev.some(p => p.id === newRecord.id)) {
+                  return prev;
+                }
+                return [newRecord, ...prev];
+              });
+              setTotalRecords(prev => prev + 1);
+              toast.success('Nuova pratica aggiunta');
+            }
+          }
+          else if (payload.eventType === 'UPDATE') {
+            // For UPDATE, fetch the complete record with joined data
+            const { data: updatedRecord, error } = await supabase
+              .from('comune_catasto')
+              .select(`
+                *,
+                stato_info:stati_generali(id, descrizione, colore),
+                tipo_incarico_info:tipi_incarico(id, descrizione, comune, catasto)
+              `)
+              .eq('id', payload.new.id)
+              .single();
+
+            if (!error && updatedRecord) {
+              // Simple update - just replace the record in the array
+              setPratiche(prev =>
+                prev.map(pratica =>
+                  pratica.id === updatedRecord.id ? updatedRecord : pratica
+                )
+              );
+              
+              // Show specific toast based on what changed
+              const oldPratica = payload.old as ComuneCatasto;
+              let messaggiToast: string[] = [];
+              
+              if (oldPratica.pagamento !== updatedRecord.pagamento) {
+                messaggiToast.push(updatedRecord.pagamento ? 'Pagamento marcato come effettuato' : 'Pagamento marcato come non effettuato');
+              }
+              if (oldPratica.comune !== updatedRecord.comune) {
+                messaggiToast.push(updatedRecord.comune ? 'Comune marcato come completato' : 'Comune marcato come non completato');
+              }
+              if (oldPratica.catasto !== updatedRecord.catasto) {
+                messaggiToast.push(updatedRecord.catasto ? 'Catasto marcato come completato' : 'Catasto marcato come non completato');
+              }
+              if (oldPratica.fine_lavori !== updatedRecord.fine_lavori) {
+                messaggiToast.push(updatedRecord.fine_lavori ? 'Fine lavori marcato come completato' : 'Fine lavori marcato come non completato');
+              }
+              if (oldPratica.stato !== updatedRecord.stato) {
+                const oldStato = stati.find(s => s.id === oldPratica.stato)?.descrizione || 'N/A';
+                const newStato = stati.find(s => s.id === updatedRecord.stato)?.descrizione || 'N/A';
+                messaggiToast.push(`Stato cambiato da "${oldStato}" a "${newStato}"`);
+              }
+              
+              // Mostra i messaggi di toast
+              if (messaggiToast.length > 0) {
+                // Se c'è solo un messaggio, mostralo normalmente
+                if (messaggiToast.length === 1) {
+                  toast.success(messaggiToast[0]);
+                } else {
+                  // Se ci sono più messaggi (es. flag + stato), mostra il primo o un messaggio combinato
+                  toast.success(messaggiToast[0]);
+                  console.log('Altri aggiornamenti:', messaggiToast.slice(1));
+                }
+              }
+            }
+          }
+          else if (payload.eventType === 'DELETE') {
+            // Remove deleted record
+            const deletedId = payload.old.id;
+            setPratiche(prev => prev.filter(pratica => pratica.id !== deletedId));
+            setTotalRecords(prev => Math.max(0, prev - 1));
+            toast.success('Pratica eliminata');
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('ComuneCatasto subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          setRealtimeConnected(true);
+        }
+      });
+
+    // Cleanup subscription on unmount
+    return () => {
+      console.log('Cleaning up ComuneCatasto realtime subscription');
+      supabase.removeChannel(channel);
+      setRealtimeConnected(false);
+    };
+  }, [user?.id, stati, tipiIncarico]);
+
   const handleSearch = () => {
     setSelectedRows(new Set()); // Resetta la selezione quando si effettua una ricerca
     fetchData();
@@ -351,6 +478,7 @@ export const ComuneCatastoPage: React.FC = () => {
 
     try {
       const newValue = !pratica[field];
+      console.log(`Toggling ${field} for pratica ${pratica.id} from ${pratica[field]} to ${newValue}`);
       
       // Se stiamo disabilitando il comune, dobbiamo anche disabilitare fine_lavori
       const updateData: any = { [field]: newValue };
@@ -376,6 +504,23 @@ export const ComuneCatastoPage: React.FC = () => {
         return;
       }
 
+      // Forza un aggiornamento locale immediato per feedback visivo istantaneo
+      setPratiche(prev =>
+        prev.map(p =>
+          p.id === pratica.id
+            ? {
+                ...p,
+                ...updateData,
+                // Se lo stato è stato aggiornato automaticamente, includi anche quello
+                ...(statoCompletata ? {
+                  stato: statoCompletata,
+                  stato_info: stati.find(s => s.id === statoCompletata) || p.stato_info
+                } : {})
+              }
+            : p
+        )
+      );
+
       if (statoCompletata) {
         const statoAggiornato = stati.find(s => s.id === statoCompletata);
         if (statoAggiornato?.descrizione.toLowerCase().includes('completata')) {
@@ -388,7 +533,6 @@ export const ComuneCatastoPage: React.FC = () => {
       } else {
         toast.success(`Campo ${field} aggiornato con successo`);
       }
-      fetchData();
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nell\'aggiornamento');
@@ -663,6 +807,37 @@ export const ComuneCatastoPage: React.FC = () => {
           return;
         }
 
+        // Aggiornamento locale immediato per feedback visivo istantaneo
+        if (dataToSave.stato !== undefined) {
+          setPratiche(prev =>
+            prev.map(p =>
+              p.id === editingPratica.id
+                ? {
+                    ...p,
+                    stato: dataToSave.stato || undefined,
+                    stato_info: dataToSave.stato ? stati.find(s => s.id === dataToSave.stato) : undefined,
+                    tipo_incarico: dataToSave.tipo_incarico || undefined,
+                    tipo_incarico_info: dataToSave.tipo_incarico ? tipiIncarico.find(t => t.id === dataToSave.tipo_incarico) : undefined,
+                    committente: dataToSave.committente,
+                    proprieta: dataToSave.proprieta || null,
+                    proprieta2: dataToSave.proprieta2 || null,
+                    indirizzo: dataToSave.indirizzo || null,
+                    citta: dataToSave.citta || null,
+                    telefono: dataToSave.telefono || null,
+                    telefono2: dataToSave.telefono2 || null,
+                    mail: dataToSave.mail || null,
+                    comune: dataToSave.comune,
+                    catasto: dataToSave.catasto,
+                    fine_lavori: dataToSave.fine_lavori,
+                    pagamento: dataToSave.pagamento,
+                    note: dataToSave.note || null,
+                    updated_at: new Date().toISOString()
+                  } as ComuneCatasto
+                : p
+            )
+          );
+        }
+
         let messaggioSuccesso = 'Pratica modificata con successo';
         if (dataToSave.stato) {
           const statoAggiornato = stati.find(s => s.id === dataToSave.stato);
@@ -698,7 +873,7 @@ export const ComuneCatastoPage: React.FC = () => {
       }
 
       closeModal();
-      fetchData();
+      // Non chiamare fetchData() - il realtime handler gestirà l'aggiornamento
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nel salvataggio');
@@ -915,6 +1090,19 @@ export const ComuneCatastoPage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Comune e Catasto</h1>
           <p className="text-gray-600 dark:text-gray-300">Gestione pratiche</p>
+          {realtimeConnected && (
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-xs text-green-600 dark:text-green-400">
+                Aggiornamenti in tempo reale attivi
+                {lastUpdateTime && (
+                  <span className="ml-1 text-gray-500 dark:text-gray-400">
+                    (ultimo: {lastUpdateTime.toLocaleTimeString('it-IT')})
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
         <button
           onClick={() => openModal()}
@@ -1983,11 +2171,11 @@ export const ComuneCatastoPage: React.FC = () => {
 
                           await Promise.all(updates);
                           
-                          toast.success(`Stato modificato per ${selectedRows.size} pratiche`);
-                          setShowStatusModal(false);
-                          setNewStatus('');
-                          setSelectedRows(new Set());
-                          fetchData();
+                         toast.success(`Stato modificato per ${selectedRows.size} pratiche`);
+                         setShowStatusModal(false);
+                         setNewStatus('');
+                         setSelectedRows(new Set());
+                         // Non chiamare fetchData() - il realtime handler gestirà l'aggiornamento
                         } catch (error) {
                           console.error('Errore nel cambio stato:', error);
                           toast.error('Errore nel cambio stato');
