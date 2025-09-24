@@ -399,14 +399,16 @@ export const Dashboard: React.FC = () => {
                 <div key={pratica.id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
                   <div>
                     <p className="font-medium text-gray-900 dark:text-white">
-                      {pratica.proprieta || pratica.committente}
+                      {pratica.committente || 'Informazione non disponibile'}
                     </p>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {pratica.tipo_incarico_info?.descrizione || 'N/A'}
+                      {pratica.proprieta || 'Nessuna proprietà specificata'}
                     </p>
                   </div>
                   <div className="text-sm text-gray-500 dark:text-gray-400">
-                    {new Date(pratica.created_at).toLocaleDateString('it-IT')}
+                    {pratica.created_at && !isNaN(new Date(pratica.created_at).getTime())
+                      ? new Date(pratica.created_at).toLocaleDateString('it-IT')
+                      : 'Data non valida'}
                   </div>
                 </div>
               ))

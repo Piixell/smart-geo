@@ -26,6 +26,7 @@ export const ApePage: React.FC = () => {
   const [pratiche, setPratiche] = useState<Ape[]>([]);
   const [stati, setStati] = useState<StatoApe[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
   const [manualRefreshNeeded, setManualRefreshNeeded] = useState(false);
@@ -56,6 +57,30 @@ export const ApePage: React.FC = () => {
   });
   const [submitting, setSubmitting] = useState(false);
   const { user, loading: authLoading } = useAuthStore();
+
+  // Funzione per gestire la selezione di una singola riga
+  const handleRowSelection = (id: number) => {
+    setSelectedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Funzione per selezionare/deselezionare tutte le righe
+  const handleSelectAll = () => {
+    if (selectedRows.size === pratiche.length) {
+      // Se tutte le righe sono selezionate, deseleziona tutto
+      setSelectedRows(new Set());
+    } else {
+      // Altrimenti seleziona tutte le righe
+      setSelectedRows(new Set(pratiche.map(p => p.id)));
+    }
+  };
 
   // Gestione parametri URL per filtri automatici
   useEffect(() => {
@@ -479,8 +504,7 @@ export const ApePage: React.FC = () => {
           registrazione_info:stati_ape(id, descrizione, colore)
         `)
         .eq('user_id', user?.id)
-        .order('registrazione', { ascending: false })
-        .order('progressivo', { ascending: false });
+        .order('registrazione', { ascending: true });
 
       // Applica filtri
       if (currentSearchTerm) {
@@ -695,6 +719,43 @@ export const ApePage: React.FC = () => {
       perPage: newRecordsPerPage,
       page: 1
     });
+  };
+
+  const handleDuplicatePratica = async (pratica: Ape) => {
+    try {
+      // Crea una copia della pratica escludendo id, created_at, updated_at, progressivo e campi joined
+      const { id, created_at, updated_at, progressivo, registrazione_info, ...praticaData } = pratica;
+
+      // Resetta i campi che devono essere resettati per la duplicazione
+      const duplicatedData = {
+        ...praticaData,
+        committente: `${praticaData.committente}`,
+        registrazione: 1,
+        pagamento: false,
+        user_id: user?.id
+      };
+
+      // Inserisci la nuova pratica
+      const { error } = await supabase
+        .from('ape')
+        .insert([duplicatedData]);
+
+      if (error) {
+        console.error('Errore duplicazione pratica:', error);
+        toast.error('Errore nella duplicazione della pratica APE');
+        return;
+      }
+
+      // Forza un refresh completo dei dati
+      await fetchData();
+      toast.success('Pratica APE duplicata con successo');
+
+      // Deseleziona le righe dopo la duplicazione
+      setSelectedRows(new Set());
+    } catch (error) {
+      console.error('Errore:', error);
+      toast.error('Errore nella duplicazione della pratica');
+    }
   };
 
   const getTotalPages = () => {
@@ -931,6 +992,33 @@ export const ApePage: React.FC = () => {
         </div>
       </div>
 
+      {/* Sezione azioni multiple (appare solo quando ci sono righe selezionate) */}
+      {selectedRows.size > 0 && (
+        <div className="card bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 dark:border-blue-400">
+          <div className="p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                {selectedRows.size} pratica{selectedRows.size !== 1 ? 'he' : ''} selezionata{selectedRows.size !== 1 ? 'e' : ''}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="btn btn-primary flex items-center gap-2"
+                  disabled={selectedRows.size !== 1}
+                  onClick={() => {
+                    const selectedPratica = pratiche.find(p => selectedRows.has(p.id));
+                    if (selectedPratica) {
+                      handleDuplicatePratica(selectedPratica);
+                    }
+                  }}
+                >
+                  Duplica pratica
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Contenuto principale */}
       {loading ? (
         <div className="card dark:bg-gray-800 dark:border-gray-700">
@@ -952,6 +1040,28 @@ export const ApePage: React.FC = () => {
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <tr>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <label className="flex items-center justify-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedRows.size === pratiche.length && pratiche.length > 0}
+                        onChange={handleSelectAll}
+                        className="sr-only"
+                        title={selectedRows.size === pratiche.length ? "Deseleziona tutto" : "Seleziona tutto"}
+                      />
+                      <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+                        selectedRows.size === pratiche.length && pratiche.length > 0
+                          ? 'border-blue-600 bg-blue-600 dark:border-blue-400 dark:bg-blue-400'
+                          : 'border-gray-300 dark:border-gray-600 bg-transparent'
+                      }`}>
+                        {selectedRows.size === pratiche.length && pratiche.length > 0 && (
+                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </div>
+                    </label>
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Stato
                   </th>
@@ -993,6 +1103,27 @@ export const ApePage: React.FC = () => {
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {pratiche.map((pratica) => (
                   <tr key={pratica.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="px-4 py-3 text-center">
+                      <label className="flex items-center justify-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedRows.has(pratica.id)}
+                          onChange={() => handleRowSelection(pratica.id)}
+                          className="sr-only"
+                        />
+                        <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+                          selectedRows.has(pratica.id)
+                            ? 'border-blue-600 bg-blue-600 dark:border-blue-400 dark:bg-blue-400'
+                            : 'border-gray-300 dark:border-gray-600 bg-transparent'
+                        }`}>
+                          {selectedRows.has(pratica.id) && (
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
+                      </label>
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(pratica.registrazione_info)}`}
