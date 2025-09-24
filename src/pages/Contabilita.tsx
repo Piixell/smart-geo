@@ -12,6 +12,7 @@ export const Contabilita: React.FC = () => {
   const [filtroAnno, setFiltroAnno] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   
   // Paginazione
   const [currentPage, setCurrentPage] = useState(1);
@@ -280,6 +281,25 @@ export const Contabilita: React.FC = () => {
       fatturato: 0,
       guadagnoNetto: 0
     });
+    setEditingId(null);
+    await loadParametriTasse();
+    setShowModal(true);
+  };
+
+  const handleEditFattura = async (fattura: Fattura) => {
+    setFormData({
+      mese: fattura.mese_fattura,
+      anno: fattura.anno_fattura || new Date().getFullYear(),
+      numeroFattura: parseInt(fattura.numero_fattura),
+      onorario: fattura.onorario,
+      spese: fattura.spese,
+      bolli: fattura.bolli,
+      cassaGeometri: fattura.cassa_geometri,
+      tasse: fattura.tasse,
+      fatturato: fattura.fatturato,
+      guadagnoNetto: fattura.guadagno_netto
+    });
+    setEditingId(fattura.id);
     await loadParametriTasse();
     setShowModal(true);
   };
@@ -288,32 +308,64 @@ export const Contabilita: React.FC = () => {
     try {
       setSaving(true);
 
-      const { error } = await supabase
-        .from('fatture')
-        .insert({
-          user_id: user?.id,
-          numero_fattura: formData.numeroFattura.toString(),
-          mese_fattura: formData.mese,
-          anno_fattura: formData.anno,
-          onorario: formData.onorario,
-          spese: formData.spese,
-          bolli: formData.bolli,
-          cassa_geometri: formData.cassaGeometri,
-          tasse: formData.tasse,
-          fatturato: formData.fatturato,
-          guadagno_netto: formData.guadagnoNetto,
-          data_creazione: new Date().toISOString(),
-          data_modifica: new Date().toISOString()
-        });
+      if (editingId) {
+        // Update existing fattura
+        const { error } = await supabase
+          .from('fatture')
+          .update({
+            numero_fattura: formData.numeroFattura.toString(),
+            mese_fattura: formData.mese,
+            anno_fattura: formData.anno,
+            onorario: formData.onorario,
+            spese: formData.spese,
+            bolli: formData.bolli,
+            cassa_geometri: formData.cassaGeometri,
+            tasse: formData.tasse,
+            fatturato: formData.fatturato,
+            guadagno_netto: formData.guadagnoNetto,
+            data_modifica: new Date().toISOString()
+          })
+          .eq('id', editingId)
+          .eq('user_id', user?.id);
 
-      if (error) {
-        console.error('Errore nel salvataggio fattura:', error);
-        toast.error('Errore nel salvataggio della fattura');
-        return;
+        if (error) {
+          console.error('Errore nell\'aggiornamento fattura:', error);
+          toast.error('Errore nell\'aggiornamento della fattura');
+          return;
+        }
+
+        toast.success('Fattura aggiornata con successo!');
+      } else {
+        // Create new fattura
+        const { error } = await supabase
+          .from('fatture')
+          .insert({
+            user_id: user?.id,
+            numero_fattura: formData.numeroFattura.toString(),
+            mese_fattura: formData.mese,
+            anno_fattura: formData.anno,
+            onorario: formData.onorario,
+            spese: formData.spese,
+            bolli: formData.bolli,
+            cassa_geometri: formData.cassaGeometri,
+            tasse: formData.tasse,
+            fatturato: formData.fatturato,
+            guadagno_netto: formData.guadagnoNetto,
+            data_creazione: new Date().toISOString(),
+            data_modifica: new Date().toISOString()
+          });
+
+        if (error) {
+          console.error('Errore nel salvataggio fattura:', error);
+          toast.error('Errore nel salvataggio della fattura');
+          return;
+        }
+
+        toast.success('Fattura salvata con successo!');
       }
 
-      toast.success('Fattura salvata con successo!');
       setShowModal(false);
+      setEditingId(null);
       fetchFatture();
     } catch (error) {
       console.error('Errore:', error);
@@ -570,7 +622,7 @@ export const Contabilita: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => {/* TODO: Implementa modifica */}}
+                          onClick={() => handleEditFattura(fattura)}
                           className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
                           title="Modifica"
                         >
@@ -633,9 +685,14 @@ export const Contabilita: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Inserisci Nuova Fattura</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                {editingId ? 'Modifica Fattura' : 'Inserisci Nuova Fattura'}
+              </h2>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingId(null);
+                }}
                 className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
               >
                 <X className="w-6 h-6" />
@@ -802,7 +859,10 @@ export const Contabilita: React.FC = () => {
             {/* Footer */}
             <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingId(null);
+                }}
                 className="btn btn-outline dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                 disabled={saving}
               >

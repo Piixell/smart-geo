@@ -11,7 +11,8 @@ import {
   Users
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
-import type { Scadenza } from '../types';
+import { useAuthStore } from '../store/authStore';
+import type { Scadenza, ComuneCatasto } from '../types';
 
 // Componente per le card statistiche
 interface StatCardProps {
@@ -72,8 +73,10 @@ const StatCard: React.FC<StatCardProps> = ({
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [speseImminenti, setSpeseImminenti] = useState<Scadenza[]>([]);
+  const [praticheRecenti, setPraticheRecenti] = useState<ComuneCatasto[]>([]);
   const [stats, setStats] = useState({
     pratiche_comune_aperte: 0,
     pratiche_completate_non_pagate: 0,
@@ -95,7 +98,8 @@ export const Dashboard: React.FC = () => {
         apeNonPagateResult,
         varieNonPagateResult,
         speseImmimentiResult,
-        fatturatoAnnuoResult
+        fatturatoAnnuoResult,
+        praticheRecentiResult
       ] = await Promise.all([
         // Pratiche Comune Aperte: tipo incarico con comune=true e stato diverso da 2 (completato)
         supabase
@@ -152,7 +156,19 @@ export const Dashboard: React.FC = () => {
         supabase
           .from('comune_catasto')
           .select('committente')
-          .neq('stato', 4) // Non annullato
+          .neq('stato', 4), // Non annullato
+
+        // Pratiche recenti: ultime 4 pratiche dalla tabella comune_catasto, ordinate per data creazione decrescente
+        supabase
+          .from('comune_catasto')
+          .select(`
+            *,
+            stato_info:stati_generali(id, descrizione, colore),
+            tipo_incarico_info:tipi_incarico(id, descrizione, comune, catasto)
+          `)
+          .eq('user_id', user?.id)
+          .order('created_at', { ascending: false })
+          .limit(4)
       ]);
 
       // Elabora i risultati
@@ -205,6 +221,11 @@ export const Dashboard: React.FC = () => {
 
       setStats(newStats);
       setSpeseImminenti(speseImmimentiResult.data || []);
+      
+      // Ensure we only show maximum 4 items, even if more are returned
+      const recentPractices = (praticheRecentiResult.data as ComuneCatasto[]) || [];
+      const limitedPractices = recentPractices.slice(0, 4);
+      setPraticheRecenti(limitedPractices);
 
     } catch (error) {
       console.error('Errore caricamento dati dashboard:', error);
@@ -214,8 +235,10 @@ export const Dashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    if (user?.id) {
+      loadDashboardData();
+    }
+  }, [user?.id]);
 
   // Funzioni di navigazione
   const handlePraticheComuneClick = () => {
@@ -353,26 +376,41 @@ export const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pratiche recenti */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Pratiche Recenti
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Pratiche Recenti
+            </h3>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                ({praticheRecenti.length} di max 4)
+              </span>
+              {loading && (
+                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              )}
+            </div>
+          </div>
           <div className="space-y-3">
-            {[
-              { cliente: 'Mario Rossi', tipo: 'Comune', data: '2024-01-15' },
-              { cliente: 'Anna Verdi', tipo: 'Catasto', data: '2024-01-14' },
-              { cliente: 'Luca Bianchi', tipo: 'APE', data: '2024-01-13' },
-              { cliente: 'Sofia Neri', tipo: 'Varie', data: '2024-01-12' },
-            ].map((pratica, index) => (
-              <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
-                <div>
-                  <p className="font-medium text-gray-900 dark:text-white">{pratica.cliente}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{pratica.tipo}</p>
-                </div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  {new Date(pratica.data).toLocaleDateString('it-IT')}
-                </div>
+            {praticheRecenti.length === 0 && !loading ? (
+              <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                Nessuna pratica recente
               </div>
-            ))}
+            ) : (
+              praticheRecenti.map((pratica) => (
+                <div key={pratica.id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">
+                      {pratica.proprieta || pratica.committente}
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {pratica.tipo_incarico_info?.descrizione || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                    {new Date(pratica.created_at).toLocaleDateString('it-IT')}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
