@@ -38,6 +38,7 @@ export const ApePage: React.FC = () => {
     soloNonPagate: false
   });
   const [filtroAnno, setFiltroAnno] = useState('');
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(() => {
     const saved = localStorage.getItem('ape-records-per-page');
@@ -590,6 +591,27 @@ export const ApePage: React.FC = () => {
     }
   };
 
+  const fetchAvailableYears = async () => {
+    if (!user?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('ape')
+        .select('created_at')
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Errore caricamento anni:', error);
+        return;
+      }
+
+      const years = [...new Set(data.map(item => new Date(item.created_at).getFullYear()))].sort((a, b) => b - a);
+      setAvailableYears(years);
+    } catch (error) {
+      console.error('Errore:', error);
+    }
+  };
+
   useEffect(() => {
     // Aspetta che l'autenticazione sia inizializzata
     const initializeData = async () => {
@@ -598,10 +620,11 @@ export const ApePage: React.FC = () => {
         console.log('Autenticazione in corso...');
         return;
       }
-      
+
       // Se c'è un user, carica i dati
       if (user?.id) {
         console.log('User autenticato, caricamento dati...');
+        await fetchAvailableYears();
         await fetchData();
       }
       // Se l'user è null ma lo store ha finito di caricare, significa che non è autenticato
@@ -662,6 +685,8 @@ export const ApePage: React.FC = () => {
               });
               setTotalRecords(prev => prev + 1);
               toast.success('Nuova pratica APE aggiunta');
+              // Refresh available years in case a new year was added
+              fetchAvailableYears();
             }
           }
           else if (payload.eventType === 'UPDATE') {
@@ -693,6 +718,8 @@ export const ApePage: React.FC = () => {
                 const newStato = stati.find(s => s.id === updatedRecord.registrazione)?.descrizione || 'N/A';
                 toast.success(`Stato cambiato da "${oldStato}" a "${newStato}"`);
               }
+              // Refresh available years in case created_at was updated (though unlikely)
+              fetchAvailableYears();
             }
           }
           else if (payload.eventType === 'DELETE') {
@@ -1013,14 +1040,11 @@ export const ApePage: React.FC = () => {
                className="input pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
              >
                <option value="">-- Tutti gli anni --</option>
-               {Array.from({ length: 10 }, (_, i) => {
-                 const year = new Date().getFullYear() - i;
-                 return (
-                   <option key={year} value={year.toString()}>
-                     {year}
-                   </option>
-                 );
-               })}
+               {availableYears.map((year) => (
+                 <option key={year} value={year.toString()}>
+                   {year}
+                 </option>
+               ))}
              </select>
              <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
            </div>
