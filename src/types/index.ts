@@ -124,12 +124,11 @@ export interface Varie {
   telefono2?: string;
   note?: string;
   registrazione?: number;
-  tipo_incarico_id?: number;
+  tipo_incarico?: string;
   pagamento: boolean;
   created_at: string;
   // Joined fields
   registrazione_info?: StatoGenerale;
-  tipo_incarico_info?: TipoIncarico;
 }
 
 export interface Rubrica {

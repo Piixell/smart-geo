@@ -32,6 +32,7 @@ export const VariePage: React.FC = () => {
     telefono2: '',
     mail: '',
     registrazione: '',
+    tipo_incarico: '',
     pagamento: false,
     note: ''
   });
@@ -395,6 +396,7 @@ export const VariePage: React.FC = () => {
       const dataToSave = {
         ...formData,
         registrazione: formData.registrazione ? parseInt(formData.registrazione) : null,
+        tipo_incarico: formData.tipo_incarico.trim() || null,
         proprieta2: formData.proprieta2.trim() || null,
         telefono2: formData.telefono2.trim() || null,
         user_id: user?.id
@@ -451,6 +453,7 @@ export const VariePage: React.FC = () => {
         telefono2: varia.telefono2 || '',
         mail: varia.mail || '',
         registrazione: varia.registrazione?.toString() || '',
+        tipo_incarico: varia.tipo_incarico || '',
         pagamento: varia.pagamento,
         note: varia.note || ''
       });
@@ -466,6 +469,7 @@ export const VariePage: React.FC = () => {
         telefono2: '',
         mail: '',
         registrazione: '',
+        tipo_incarico: '',
         pagamento: false,
         note: ''
       });
@@ -486,6 +490,7 @@ export const VariePage: React.FC = () => {
       telefono2: '',
       mail: '',
       registrazione: '',
+      tipo_incarico: '',
       pagamento: false,
       note: ''
     });
@@ -620,6 +625,7 @@ export const VariePage: React.FC = () => {
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Stato</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tipo Incarico</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Committente</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Proprietario</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Indirizzo</th>
@@ -634,7 +640,7 @@ export const VariePage: React.FC = () => {
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {loading || authLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={11} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="ml-2">
@@ -645,7 +651,7 @@ export const VariePage: React.FC = () => {
                 </tr>
               ) : varie.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={11} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                     Nessuna varia trovata
                   </td>
                 </tr>
@@ -653,13 +659,14 @@ export const VariePage: React.FC = () => {
                 varie.map((varia) => (
                   <tr key={varia.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="px-4 py-3">
-                      <span 
+                      <span
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(varia.registrazione_info)}`}
                         style={{ backgroundColor: getStatoBackgroundColor(varia.registrazione_info) }}
                       >
                         {varia.registrazione_info?.descrizione || 'N/A'}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{varia.tipo_incarico || '-'}</td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{varia.committente}</td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{combineProprieta(varia.proprieta, varia.proprieta2)}</td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{varia.indirizzo || '-'}</td>
@@ -888,6 +895,20 @@ export const VariePage: React.FC = () => {
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Note
+                    </label>
+                    <textarea
+                      name="note"
+                      value={formData.note}
+                      onChange={handleInputChange}
+                      placeholder="Note aggiuntive"
+                      rows={4}
+                      className="input w-full resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+
                 </div>
 
                 <div className="space-y-4">
@@ -957,15 +978,15 @@ export const VariePage: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Note
+                      Tipo Incarico
                     </label>
-                    <textarea
-                      name="note"
-                      value={formData.note}
+                    <input
+                      type="text"
+                      name="tipo_incarico"
+                      value={formData.tipo_incarico}
                       onChange={handleInputChange}
-                      placeholder="Note aggiuntive"
-                      rows={4}
-                      className="input w-full resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Tipo di incarico"
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
                     />
                   </div>
 
