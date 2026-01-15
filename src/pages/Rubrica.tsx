@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, X, Phone, Mail, Edit, Trash2, User, Building } from 'lucide-react';
+import { Plus, Search, X, Phone, Mail, Edit, Trash2, User } from 'lucide-react';
 import { supabase } from '../services/supabase';
-import type { Rubrica as RubricaType, TipologiaContatto, TipologiaAppartenenza } from '../types';
+import type { Rubrica as RubricaType } from '../types';
 import toast from 'react-hot-toast';
 
 export const Rubrica: React.FC = () => {
   const [contatti, setContatti] = useState<RubricaType[]>([]);
-  const [tipologie, setTipologie] = useState<TipologiaContatto[]>([]);
-  const [appartenenze, setAppartenenze] = useState<TipologiaAppartenenza[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTipologia, setSelectedTipologia] = useState<number | null>(null);
-  const [selectedAppartenenza, setSelectedAppartenenza] = useState<number | null>(null);
   const [soloAttivi, setSoloAttivi] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingContatto, setEditingContatto] = useState<RubricaType | null>(null);
@@ -19,74 +15,22 @@ export const Rubrica: React.FC = () => {
     nominativo: '',
     telefono: '',
     email: '',
-    ufficio: '',
-    tipologia_id: '',
-    appartenenza_id: '',
+    riferimento: '',
     disattivato: false
   });
   const [submitting, setSubmitting] = useState(false);
-
-  const fetchTipologie = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('tipologia_contatti')
-        .select('*')
-        .order('nome', { ascending: true });
-
-      if (error) {
-        console.error('Errore nel caricamento tipologie:', error);
-        return;
-      }
-
-      setTipologie(data || []);
-    } catch (error) {
-      console.error('Errore:', error);
-    }
-  };
-
-  const fetchAppartenenze = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('tipologie_appartenenza')
-        .select('*')
-        .order('nome', { ascending: true });
-
-      if (error) {
-        console.error('Errore nel caricamento appartenenze:', error);
-        return;
-      }
-
-      setAppartenenze(data || []);
-    } catch (error) {
-      console.error('Errore:', error);
-    }
-  };
 
   const fetchContatti = async () => {
     try {
       setLoading(true);
       let query = supabase
         .from('rubrica')
-        .select(`
-          *,
-          tipologia_info:tipologia_contatti!rubrica_tipologia_id_fkey(id, nome),
-          appartenenza_info:tipologie_appartenenza(id, nome)
-        `)
+        .select('*')
         .order('nominativo', { ascending: true });
 
       // Filtro per testo di ricerca
       if (searchTerm) {
-        query = query.or(`nominativo.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,telefono.ilike.%${searchTerm}%`);
-      }
-
-      // Filtro tipologia
-      if (selectedTipologia) {
-        query = query.eq('tipologia_id', selectedTipologia);
-      }
-
-      // Filtro appartenenza
-      if (selectedAppartenenza) {
-        query = query.eq('appartenenza_id', selectedAppartenenza);
+        query = query.or(`nominativo.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,telefono.ilike.%${searchTerm}%,riferimento.ilike.%${searchTerm}%`);
       }
 
       // Filtro solo attivi
@@ -112,18 +56,11 @@ export const Rubrica: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchTipologie();
-    fetchAppartenenze();
-  }, []);
-
-  useEffect(() => {
     fetchContatti();
-  }, [searchTerm, selectedTipologia, selectedAppartenenza, soloAttivi]);
+  }, [searchTerm, soloAttivi]);
 
   const handleClearFilters = () => {
     setSearchTerm('');
-    setSelectedTipologia(null);
-    setSelectedAppartenenza(null);
     setSoloAttivi(true);
   };
 
@@ -167,9 +104,7 @@ export const Rubrica: React.FC = () => {
       nominativo: contatto.nominativo,
       telefono: contatto.telefono || '',
       email: contatto.email || '',
-      ufficio: contatto.ufficio || '',
-      tipologia_id: contatto.tipologia_id?.toString() || '',
-      appartenenza_id: contatto.appartenenza_id?.toString() || '',
+      riferimento: contatto.riferimento || '',
       disattivato: contatto.disattivato
     });
     setShowModal(true);
@@ -202,9 +137,7 @@ export const Rubrica: React.FC = () => {
       nominativo: '',
       telefono: '',
       email: '',
-      ufficio: '',
-      tipologia_id: '',
-      appartenenza_id: '',
+      riferimento: '',
       disattivato: false
     });
     setEditingContatto(null);
@@ -224,9 +157,7 @@ export const Rubrica: React.FC = () => {
         nominativo: formData.nominativo.trim(),
         telefono: formData.telefono.trim() || null,
         email: formData.email.trim() || null,
-        ufficio: formData.ufficio.trim() || null,
-        tipologia_id: formData.tipologia_id ? parseInt(formData.tipologia_id) : null,
-        appartenenza_id: formData.appartenenza_id ? parseInt(formData.appartenenza_id) : null,
+        riferimento: formData.riferimento.trim() || null,
         disattivato: formData.disattivato
       };
 
@@ -300,22 +231,6 @@ export const Rubrica: React.FC = () => {
     return phone;
   };
 
-  const getTipologiaColor = (tipologia: TipologiaContatto | undefined) => {
-    if (!tipologia) return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300';
-    
-    // Colori basati sul nome della tipologia
-    const colorMap: Record<string, string> = {
-      'Geometra': 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300',
-      'Architetto': 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300',
-      'Ingegnere': 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300',
-      'Commercialista': 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300',
-      'Avvocato': 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300',
-      'Cliente': 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300'
-    };
-    
-    return colorMap[tipologia.nome] || 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300';
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -335,9 +250,9 @@ export const Rubrica: React.FC = () => {
 
       {/* Filtri */}
       <div className="card">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           {/* Campo di ricerca */}
-          <div className="md:col-span-2">
+          <div className="md:col-span-1">
             <div className="relative">
               <input
                 type="text"
@@ -356,38 +271,6 @@ export const Rubrica: React.FC = () => {
                 </button>
               )}
             </div>
-          </div>
-
-          {/* Filtro Tipologia */}
-          <div>
-            <select
-              value={selectedTipologia || ''}
-              onChange={(e) => setSelectedTipologia(e.target.value ? parseInt(e.target.value) : null)}
-              className="input"
-            >
-              <option value="">Tutte le tipologie</option>
-              {tipologie.map((tipologia) => (
-                <option key={tipologia.id} value={tipologia.id}>
-                  {tipologia.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Filtro Appartenenza */}
-          <div>
-            <select
-              value={selectedAppartenenza || ''}
-              onChange={(e) => setSelectedAppartenenza(e.target.value ? parseInt(e.target.value) : null)}
-              className="input"
-            >
-              <option value="">Tutte le appartenenze</option>
-              {appartenenze.map((appartenenza) => (
-                <option key={appartenenza.id} value={appartenenza.id}>
-                  {appartenenza.nome}
-                </option>
-              ))}
-            </select>
           </div>
 
           {/* Toggle Solo attivi */}
@@ -440,19 +323,13 @@ export const Rubrica: React.FC = () => {
                   Nominativo
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Ufficio
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Appartenenza
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Telefono
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Email
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Tipologia
+                  Riferimento
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Stato
@@ -465,7 +342,7 @@ export const Rubrica: React.FC = () => {
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="ml-2">Caricamento...</span>
@@ -474,7 +351,7 @@ export const Rubrica: React.FC = () => {
                 </tr>
               ) : contatti.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                     Nessun contatto trovato
                   </td>
                 </tr>
@@ -486,15 +363,6 @@ export const Rubrica: React.FC = () => {
                         <User className="w-4 h-4 text-gray-400" />
                         {contatto.nominativo}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
-                      <div className="flex items-center gap-2">
-                        {contatto.ufficio && <Building className="w-4 h-4 text-gray-400" />}
-                        {contatto.ufficio || '-'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
-                      {contatto.appartenenza_info?.nome || '-'}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
                       <div className="flex items-center gap-2">
@@ -528,14 +396,8 @@ export const Rubrica: React.FC = () => {
                         {!contatto.email && '-'}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {contatto.tipologia_info ? (
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getTipologiaColor(contatto.tipologia_info)}`}>
-                          {contatto.tipologia_info.nome}
-                        </span>
-                      ) : (
-                        <span className="text-gray-500 dark:text-gray-400">-</span>
-                      )}
+                    <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">
+                      {contatto.riferimento || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <button
@@ -649,61 +511,19 @@ export const Rubrica: React.FC = () => {
                 </div>
               </div>
 
-              {/* Ufficio */}
+              {/* Riferimento */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Ufficio
+                  Riferimento
                 </label>
                 <input
                   type="text"
-                  name="ufficio"
-                  value={formData.ufficio}
+                  name="riferimento"
+                  value={formData.riferimento}
                   onChange={handleInputChange}
-                  placeholder="Ufficio di appartenenza"
+                  placeholder="Note di riferimento"
                   className="input w-full"
                 />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Tipologia */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Tipologia
-                  </label>
-                  <select
-                    name="tipologia_id"
-                    value={formData.tipologia_id}
-                    onChange={handleInputChange}
-                    className="input w-full"
-                  >
-                    <option value="">Seleziona tipologia</option>
-                    {tipologie.map((tipologia) => (
-                      <option key={tipologia.id} value={tipologia.id}>
-                        {tipologia.nome}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Appartenenza */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Appartenenza
-                  </label>
-                  <select
-                    name="appartenenza_id"
-                    value={formData.appartenenza_id}
-                    onChange={handleInputChange}
-                    className="input w-full"
-                  >
-                    <option value="">Seleziona appartenenza</option>
-                    {appartenenze.map((appartenenza) => (
-                      <option key={appartenenza.id} value={appartenenza.id}>
-                        {appartenenza.nome}
-                      </option>
-                    ))}
-                  </select>
-                </div>
               </div>
 
               {/* Stato */}

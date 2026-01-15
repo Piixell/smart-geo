@@ -37,7 +37,7 @@ export const ApePage: React.FC = () => {
   const [filtriAttivi, setFiltriAttivi] = useState({
     soloNonPagate: false
   });
-  const [filtroAnno, setFiltroAnno] = useState('');
+  const [filtroAnno, setFiltroAnno] = useState(new Date().getFullYear().toString());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(() => {
@@ -530,6 +530,7 @@ export const ApePage: React.FC = () => {
           registrazione_info:stati_ape(id, descrizione, colore)
         `)
         .eq('user_id', user?.id)
+        .order('progressivo', { ascending: false, nullsFirst: true })
         .order('registrazione', { ascending: true });
 
       // Applica filtri

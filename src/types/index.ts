@@ -53,21 +53,6 @@ export interface TipoIncarico {
   updated_at: string;
 }
 
-export interface TipologiaContatto {
-  id: number;
-  nome: string;
-  descrizione?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TipologiaAppartenenza {
-  id: number;
-  nome: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface ComuneCatasto {
   id: number;
   committente: string;
@@ -134,18 +119,12 @@ export interface Varie {
 export interface Rubrica {
   id: number;
   nominativo: string;
-  tipologia?: number;
   telefono?: string;
   email?: string;
-  ufficio?: string;
-  tipologia_id?: number;
-  appartenenza_id?: number;
+  riferimento?: string;
   disattivato: boolean;
   created_at: string;
   updated_at: string;
-  // Joined fields
-  tipologia_info?: TipologiaContatto;
-  appartenenza_info?: TipologiaAppartenenza;
 }
 
 export interface Scadenza {
