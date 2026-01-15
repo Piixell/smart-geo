@@ -250,16 +250,16 @@ export const Rubrica: React.FC = () => {
 
       {/* Filtri */}
       <div className="card">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-          {/* Campo di ricerca */}
-          <div className="md:col-span-1">
+        <div className="flex gap-4 items-center">
+          {/* Campo di ricerca - allargato */}
+          <div className="flex-1">
             <div className="relative">
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Cerca contatto..."
-                className="input pl-10 pr-10"
+                className="input pl-10 pr-10 w-full"
               />
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
               {searchTerm && (
@@ -297,12 +297,12 @@ export const Rubrica: React.FC = () => {
                   </svg>
                 )}
               </div>
-              <span className="text-sm font-medium">Solo attivi</span>
+              <span className="text-sm font-medium whitespace-nowrap">Solo attivi</span>
             </label>
           </div>
 
-          {/* Pulsante clear */}
-          <div className="flex gap-2">
+          {/* Pulsante clear - allineato a destra */}
+          <div>
             <button
               onClick={handleClearFilters}
               className="btn btn-outline flex items-center gap-2"
