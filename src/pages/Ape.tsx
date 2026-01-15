@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Search, ChevronDown, Edit, Trash2, Check, X, Save } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/authStore';
@@ -8,57 +9,164 @@ import toast from 'react-hot-toast';
 interface ApeFormData {
   committente: string;
   proprieta: string;
+  proprieta2: string;
   indirizzo: string;
   citta: string;
   mail: string;
   telefono: string;
+  telefono2: string;
   note: string;
   registrazione: number | null;
   progressivo: string;
   pagamento: boolean;
+  created_at: string;
 }
 
 export const ApePage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [pratiche, setPratiche] = useState<Ape[]>([]);
   const [stati, setStati] = useState<StatoApe[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
+  const [manualRefreshNeeded, setManualRefreshNeeded] = useState(false);
+  const [forceRefresh, setForceRefresh] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroStato, setFiltroStato] = useState('');
   const [filtriAttivi, setFiltriAttivi] = useState({
     soloNonPagate: false
   });
+  const [filtroAnno, setFiltroAnno] = useState(new Date().getFullYear().toString());
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [recordsPerPage, setRecordsPerPage] = useState(25);
+  const [recordsPerPage, setRecordsPerPage] = useState(() => {
+    const saved = localStorage.getItem('ape-records-per-page');
+    if (saved) {
+      const parsed = parseInt(saved);
+      if ([25, 50, 100, 200].includes(parsed)) {
+        return parsed;
+      }
+    }
+    return 25;
+  });
   const [totalRecords, setTotalRecords] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [editingPratica, setEditingPratica] = useState<Ape | null>(null);
   const [formData, setFormData] = useState<ApeFormData>({
     committente: '',
     proprieta: '',
+    proprieta2: '',
     indirizzo: '',
     citta: '',
     mail: '',
     telefono: '',
+    telefono2: '',
     note: '',
     registrazione: null,
     progressivo: '',
-    pagamento: false
+    pagamento: false,
+    created_at: new Date().toISOString().split('T')[0] // Default to today's date
   });
   const [submitting, setSubmitting] = useState(false);
-  const { user } = useAuthStore();
+  const { user, loading: authLoading } = useAuthStore();
+
+  // Funzione per gestire la selezione di una singola riga
+  const handleRowSelection = (id: number) => {
+    setSelectedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Funzione per selezionare/deselezionare tutte le righe
+  const handleSelectAll = () => {
+    if (selectedRows.size === pratiche.length) {
+      // Se tutte le righe sono selezionate, deseleziona tutto
+      setSelectedRows(new Set());
+    } else {
+      // Altrimenti seleziona tutte le righe
+      setSelectedRows(new Set(pratiche.map(p => p.id)));
+    }
+  };
+
+  // Gestione parametri URL per filtri automatici
+  useEffect(() => {
+    const filter = searchParams.get('filter');
+    let newFiltriAttivi = { ...filtriAttivi };
+    
+    if (filter === 'non_pagate') {
+      newFiltriAttivi = { ...newFiltriAttivi, soloNonPagate: true };
+    }
+    
+    // Solo se c'è un filtro da applicare e l'user è presente
+    if (filter && user?.id && !authLoading) {
+      setFiltriAttivi(newFiltriAttivi);
+      setCurrentPage(1);
+      // Esegui la ricerca con il nuovo filtro
+      fetchData({
+        filtriAttivi: newFiltriAttivi,
+        page: 1
+      });
+    }
+  }, [searchParams, user?.id, authLoading]);
+
+  // Protezione contro errori delle estensioni del browser
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      if (event.filename && (
+        event.filename.includes('chrome-extension://') ||
+        event.filename.includes('moz-extension://') ||
+        event.filename.includes('safari-extension://') ||
+        event.message?.includes('UltraWide') ||
+        event.message?.includes('newValue')
+      )) {
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (event.reason && typeof event.reason === 'string' && (
+        event.reason.includes('chrome-extension://') ||
+        event.reason.includes('UltraWide') ||
+        event.reason.includes('newValue')
+      )) {
+        event.preventDefault();
+        return false;
+      }
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
 
   const resetForm = () => {
     setFormData({
       committente: '',
       proprieta: '',
+      proprieta2: '',
       indirizzo: '',
       citta: '',
       mail: '',
       telefono: '',
+      telefono2: '',
       note: '',
       registrazione: null,
       progressivo: '',
-      pagamento: false
+      pagamento: false,
+      created_at: new Date().toISOString().split('T')[0]
     });
     setEditingPratica(null);
   };
@@ -72,14 +180,17 @@ export const ApePage: React.FC = () => {
     setFormData({
       committente: pratica.committente || '',
       proprieta: pratica.proprieta || '',
+      proprieta2: pratica.proprieta2 || '',
       indirizzo: pratica.indirizzo || '',
       citta: pratica.citta || '',
       mail: pratica.mail || '',
       telefono: pratica.telefono || '',
+      telefono2: pratica.telefono2 || '',
       note: pratica.note || '',
       registrazione: pratica.registrazione || null,
       progressivo: pratica.progressivo || '',
-      pagamento: pratica.pagamento || false
+      pagamento: pratica.pagamento || false,
+      created_at: pratica.created_at ? new Date(pratica.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
     });
     setEditingPratica(pratica);
     setShowModal(true);
@@ -107,20 +218,59 @@ export const ApePage: React.FC = () => {
     }
   };
 
-  const handleInputChange = async (field: keyof ApeFormData, value: string | number | boolean | null) => {
-    // Formatta il numero di telefono se il campo è 'telefono'
-    if (field === 'telefono' && typeof value === 'string') {
-      value = formatPhoneNumber(value);
+  // Funzione per combinare i telefoni
+  const combineTelefoni = (telefono1: string | null | undefined, telefono2: string | null | undefined): string => {
+    const formatted1 = telefono1 ? formatPhoneNumber(telefono1) : '';
+    const formatted2 = telefono2 ? formatPhoneNumber(telefono2) : '';
+    
+    if (!formatted1 && !formatted2) return '-';
+    if (!formatted2) return formatted1;
+    if (!formatted1) return formatted2;
+    
+    return `${formatted1} / ${formatted2}`;
+  };
+
+  // Funzione per combinare le proprietà
+  const combineProprieta = (proprieta1: string | null | undefined, proprieta2: string | null | undefined): string => {
+    if (!proprieta1 && !proprieta2) return '-';
+    if (!proprieta2) return proprieta1 || '-';
+    if (!proprieta1) return proprieta2 || '-';
+    
+    return `${proprieta1} / ${proprieta2}`;
+  };
+
+  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    if (!e || !e.target) {
+      console.warn('Evento malformato ignorato');
+      return;
+    }
+
+    const { name, value, type } = e.target;
+    
+    if (!name) {
+      console.warn('Nome campo non definito');
+      return;
+    }
+
+    let processedValue = value;
+    
+    if (name === 'telefono' && type !== 'checkbox') {
+      processedValue = formatPhoneNumber(value);
     }
     
+    if (name === 'telefono2' && type !== 'checkbox') {
+      processedValue = formatPhoneNumber(value);
+    }
+
     // Se stiamo cambiando lo stato di registrazione a "Completata" e non c'è un progressivo
-    if (field === 'registrazione' && typeof value === 'number' && !formData.progressivo.trim()) {
+    if (name === 'registrazione' && value && !formData.progressivo.trim()) {
       try {
-        const progressivoGenerato = await generaProgressivoAutomatico(value);
+        const statoId = parseInt(value);
+        const progressivoGenerato = await generaProgressivoAutomatico(statoId);
         if (progressivoGenerato) {
           setFormData(prev => ({
             ...prev,
-            [field]: value,
+            [name]: statoId,
             progressivo: progressivoGenerato
           }));
           toast.success('Progressivo generato automaticamente');
@@ -131,10 +281,10 @@ export const ApePage: React.FC = () => {
         // Continua con l'aggiornamento normale se c'è un errore
       }
     }
-    
+
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : processedValue
     }));
   };
 
@@ -215,6 +365,8 @@ export const ApePage: React.FC = () => {
     setSubmitting(true);
 
     try {
+      console.log('Submitting form data:', formData);
+      
       // Verifica se dobbiamo generare il progressivo automatico
       let progressivoFinale = formData.progressivo.trim();
       
@@ -226,23 +378,30 @@ export const ApePage: React.FC = () => {
       const dataToSubmit = {
         committente: formData.committente.trim(),
         proprieta: formData.proprieta.trim() || null,
+        proprieta2: formData.proprieta2.trim() || null,
         indirizzo: formData.indirizzo.trim() || null,
         citta: formData.citta.trim() || null,
         mail: formData.mail.trim() || null,
         telefono: formData.telefono.trim() || null,
+        telefono2: formData.telefono2.trim() || null,
         note: formData.note.trim() || null,
         registrazione: formData.registrazione || null,
         progressivo: progressivoFinale || null,
         pagamento: formData.pagamento,
+        created_at: formData.created_at,
         user_id: user?.id
       };
 
+      console.log('Data to submit:', dataToSubmit);
+
       if (editingPratica) {
-        // Modifica
+        console.log('Updating existing pratica:', editingPratica.id);
+        // Modifica - bypassa tutti i controlli e forza il refresh
+        const { created_at, ...updateData } = dataToSubmit; // Exclude created_at from update
         const { error } = await supabase
           .from('ape')
           .update({
-            ...dataToSubmit,
+            ...updateData,
             updated_at: new Date().toISOString()
           })
           .eq('id', editingPratica.id)
@@ -254,13 +413,20 @@ export const ApePage: React.FC = () => {
           return;
         }
 
+        // Forza un refresh completo dei dati bypassando il realtime
+        console.log('Forcing complete data refresh after edit');
+        setForceRefresh(true);
+        await fetchData();
+        setForceRefresh(false);
+        
         if (progressivoFinale && !formData.progressivo.trim()) {
           toast.success('Pratica APE modificata e progressivo generato automaticamente');
         } else {
           toast.success('Pratica APE modificata con successo');
         }
       } else {
-        // Creazione
+        console.log('Creating new pratica');
+        // Creazione - forza anche il refresh per le nuove pratiche
         const { error } = await supabase
           .from('ape')
           .insert([dataToSubmit]);
@@ -271,6 +437,12 @@ export const ApePage: React.FC = () => {
           return;
         }
 
+        // Forza un refresh completo anche per le nuove pratiche
+        console.log('Forcing complete data refresh after creation');
+        setForceRefresh(true);
+        await fetchData();
+        setForceRefresh(false);
+
         if (progressivoFinale && !formData.progressivo.trim()) {
           toast.success('Pratica APE creata e progressivo generato automaticamente');
         } else {
@@ -279,7 +451,6 @@ export const ApePage: React.FC = () => {
       }
 
       closeModal();
-      fetchData();
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nell\'operazione');
@@ -291,6 +462,7 @@ export const ApePage: React.FC = () => {
   const fetchData = async (customFilters?: {
     searchTerm?: string;
     filtroStato?: string;
+    filtroAnno?: string;
     filtriAttivi?: typeof filtriAttivi;
     page?: number;
     perPage?: number;
@@ -298,14 +470,21 @@ export const ApePage: React.FC = () => {
     try {
       setLoading(true);
       
-      // Usa i filtri personalizzati o quelli dello stato corrente
+      // Verifica che l'utente sia autenticato
+      if (!user?.id) {
+        console.warn('Utente non autenticato, impossibile caricare i dati');
+        setLoading(false);
+        return;
+      }
+      
       const currentSearchTerm = customFilters?.searchTerm ?? searchTerm;
       const currentFiltroStato = customFilters?.filtroStato ?? filtroStato;
+      const currentFiltroAnno = customFilters?.filtroAnno ?? filtroAnno;
       const currentFiltriAttivi = customFilters?.filtriAttivi ?? filtriAttivi;
       const currentPageParam = customFilters?.page ?? currentPage;
       const currentPerPage = customFilters?.perPage ?? recordsPerPage;
       
-      // Prima query per contare il totale dei record
+      // Query per contare il totale
       let countQuery = supabase
         .from('ape')
         .select('*', { count: 'exact', head: true })
@@ -313,11 +492,18 @@ export const ApePage: React.FC = () => {
 
       // Applica filtri al conteggio
       if (currentSearchTerm) {
-        countQuery = countQuery.or(`committente.ilike.%${currentSearchTerm}%,proprieta.ilike.%${currentSearchTerm}%,indirizzo.ilike.%${currentSearchTerm}%,progressivo.ilike.%${currentSearchTerm}%`);
+        countQuery = countQuery.or(`committente.ilike.%${currentSearchTerm}%,proprieta.ilike.%${currentSearchTerm}%,proprieta2.ilike.%${currentSearchTerm}%,indirizzo.ilike.%${currentSearchTerm}%,progressivo.ilike.%${currentSearchTerm}%,citta.ilike.%${currentSearchTerm}%,mail.ilike.%${currentSearchTerm}%,note.ilike.%${currentSearchTerm}%,telefono.ilike.%${currentSearchTerm}%,telefono2.ilike.%${currentSearchTerm}%`);
       }
 
       if (currentFiltroStato) {
         countQuery = countQuery.eq('registrazione', parseInt(currentFiltroStato));
+      }
+
+      if (currentFiltroAnno) {
+        // Filter by year using the created_at field
+        const startDate = `${currentFiltroAnno}-01-01`;
+        const endDate = `${currentFiltroAnno}-12-31`;
+        countQuery = countQuery.gte('created_at', startDate).lte('created_at', endDate);
       }
 
       if (currentFiltriAttivi.soloNonPagate) {
@@ -328,6 +514,10 @@ export const ApePage: React.FC = () => {
       
       if (countError) {
         console.error('Errore nel conteggio:', countError);
+        // Se l'errore è relativo alla sessione, mostra un messaggio specifico
+        if (countError.message?.includes('JWT') || countError.message?.includes('session')) {
+          toast.error('Sessione scaduta. Effettua nuovamente il login.');
+        }
       } else {
         setTotalRecords(count || 0);
       }
@@ -340,15 +530,23 @@ export const ApePage: React.FC = () => {
           registrazione_info:stati_ape(id, descrizione, colore)
         `)
         .eq('user_id', user?.id)
-        .order('created_at', { ascending: false });
+        .order('progressivo', { ascending: false, nullsFirst: true })
+        .order('registrazione', { ascending: true });
 
       // Applica filtri
       if (currentSearchTerm) {
-        query = query.or(`committente.ilike.%${currentSearchTerm}%,proprieta.ilike.%${currentSearchTerm}%,indirizzo.ilike.%${currentSearchTerm}%,progressivo.ilike.%${currentSearchTerm}%`);
+        query = query.or(`committente.ilike.%${currentSearchTerm}%,proprieta.ilike.%${currentSearchTerm}%,proprieta2.ilike.%${currentSearchTerm}%,indirizzo.ilike.%${currentSearchTerm}%,progressivo.ilike.%${currentSearchTerm}%,citta.ilike.%${currentSearchTerm}%,mail.ilike.%${currentSearchTerm}%,note.ilike.%${currentSearchTerm}%,telefono.ilike.%${currentSearchTerm}%,telefono2.ilike.%${currentSearchTerm}%`);
       }
 
       if (currentFiltroStato) {
         query = query.eq('registrazione', parseInt(currentFiltroStato));
+      }
+
+      if (currentFiltroAnno) {
+        // Filter by year using the created_at field
+        const startDate = `${currentFiltroAnno}-01-01`;
+        const endDate = `${currentFiltroAnno}-12-31`;
+        query = query.gte('created_at', startDate).lte('created_at', endDate);
       }
 
       if (currentFiltriAttivi.soloNonPagate) {
@@ -364,7 +562,12 @@ export const ApePage: React.FC = () => {
 
       if (praticheError) {
         console.error('Errore nel caricamento pratiche APE:', praticheError);
-        toast.error('Errore nel caricamento delle pratiche APE');
+        // Se l'errore è relativo alla sessione, mostra un messaggio specifico
+        if (praticheError.message?.includes('JWT') || praticheError.message?.includes('session')) {
+          toast.error('Sessione scaduta. Effettua nuovamente il login.');
+        } else {
+          toast.error('Errore nel caricamento delle pratiche APE');
+        }
         return;
       }
 
@@ -389,11 +592,160 @@ export const ApePage: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    if (user?.id) {
-      fetchData();
+  const fetchAvailableYears = async () => {
+    if (!user?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('ape')
+        .select('created_at')
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Errore caricamento anni:', error);
+        return;
+      }
+
+      const years = [...new Set(data.map(item => new Date(item.created_at).getFullYear()))].sort((a, b) => b - a);
+      setAvailableYears(years);
+    } catch (error) {
+      console.error('Errore:', error);
     }
-  }, [user?.id]);
+  };
+
+  useEffect(() => {
+    // Aspetta che l'autenticazione sia inizializzata
+    const initializeData = async () => {
+      // Attende che l'autenticazione sia completata
+      if (authLoading) {
+        console.log('Autenticazione in corso...');
+        return;
+      }
+
+      // Se c'è un user, carica i dati
+      if (user?.id) {
+        console.log('User autenticato, caricamento dati...');
+        await fetchAvailableYears();
+        await fetchData();
+      }
+      // Se l'user è null ma lo store ha finito di caricare, significa che non è autenticato
+      else if (user === null) {
+        console.warn('User non autenticato');
+        setLoading(false);
+      }
+    };
+
+    initializeData();
+  }, [user?.id, authLoading]);
+
+  // Setup Supabase Realtime subscription
+  useEffect(() => {
+    if (!user?.id) return;
+
+    console.log('Setting up realtime subscription for user:', user.id);
+
+    // Create a channel for realtime updates
+    const channel = supabase
+      .channel('ape-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen for all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'ape',
+          filter: `user_id=eq.${user.id}` // Only listen to changes for current user
+        },
+        async (payload) => {
+          console.log('Realtime update received:', payload);
+          setLastUpdateTime(new Date());
+          setManualRefreshNeeded(false); // Reset manual refresh flag when realtime works
+          if (forceRefresh) {
+            console.log('Skipping realtime update due to force refresh');
+            return; // Skip realtime updates when force refresh is active
+          }
+          
+          // Simple update logic - just update the local state for any change
+          if (payload.eventType === 'INSERT') {
+            // For INSERT, fetch the complete record with joined data
+            const { data: newRecord, error } = await supabase
+              .from('ape')
+              .select(`
+                *,
+                registrazione_info:stati_ape(id, descrizione, colore)
+              `)
+              .eq('id', payload.new.id)
+              .single();
+
+            if (!error && newRecord) {
+              setPratiche(prev => {
+                // Check if it already exists to avoid duplicates
+                if (prev.some(p => p.id === newRecord.id)) {
+                  return prev;
+                }
+                return [newRecord, ...prev];
+              });
+              setTotalRecords(prev => prev + 1);
+              toast.success('Nuova pratica APE aggiunta');
+              // Refresh available years in case a new year was added
+              fetchAvailableYears();
+            }
+          }
+          else if (payload.eventType === 'UPDATE') {
+            // For UPDATE, fetch the complete record with joined data
+            const { data: updatedRecord, error } = await supabase
+              .from('ape')
+              .select(`
+                *,
+                registrazione_info:stati_ape(id, descrizione, colore)
+              `)
+              .eq('id', payload.new.id)
+              .single();
+
+            if (!error && updatedRecord) {
+              // Simple update - just replace the record in the array
+              setPratiche(prev =>
+                prev.map(pratica =>
+                  pratica.id === updatedRecord.id ? updatedRecord : pratica
+                )
+              );
+              
+              // Show specific toast based on what changed
+              const oldPratica = payload.old as Ape;
+              if (oldPratica.pagamento !== updatedRecord.pagamento) {
+                toast.success(updatedRecord.pagamento ? 'Pagamento marcato come effettuato' : 'Pagamento marcato come non effettuato');
+              }
+              if (oldPratica.registrazione !== updatedRecord.registrazione) {
+                const oldStato = stati.find(s => s.id === oldPratica.registrazione)?.descrizione || 'N/A';
+                const newStato = stati.find(s => s.id === updatedRecord.registrazione)?.descrizione || 'N/A';
+                toast.success(`Stato cambiato da "${oldStato}" a "${newStato}"`);
+              }
+              // Refresh available years in case created_at was updated (though unlikely)
+              fetchAvailableYears();
+            }
+          }
+          else if (payload.eventType === 'DELETE') {
+            // Remove deleted record
+            const deletedId = payload.old.id;
+            setPratiche(prev => prev.filter(pratica => pratica.id !== deletedId));
+            setTotalRecords(prev => Math.max(0, prev - 1));
+            toast.success('Pratica APE eliminata');
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('Subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          setRealtimeConnected(true);
+        }
+      });
+
+    // Cleanup subscription on unmount
+    return () => {
+      console.log('Cleaning up realtime subscription');
+      supabase.removeChannel(channel);
+      setRealtimeConnected(false);
+    };
+  }, [user?.id, stati]);
 
   const handleSearch = () => {
     fetchData();
@@ -422,11 +774,50 @@ export const ApePage: React.FC = () => {
 
   const handleRecordsPerPageChange = (newRecordsPerPage: number) => {
     setRecordsPerPage(newRecordsPerPage);
+    localStorage.setItem('ape-records-per-page', newRecordsPerPage.toString());
     setCurrentPage(1); // Reset alla prima pagina quando cambia il numero di record
-    fetchData({ 
+    fetchData({
       perPage: newRecordsPerPage,
       page: 1
     });
+  };
+
+  const handleDuplicatePratica = async (pratica: Ape) => {
+    try {
+      // Crea una copia della pratica escludendo id, created_at, updated_at, progressivo e campi joined
+      const { id, created_at, updated_at, progressivo, registrazione_info, ...praticaData } = pratica;
+
+      // Resetta i campi che devono essere resettati per la duplicazione
+      const duplicatedData = {
+        ...praticaData,
+        committente: `${praticaData.committente}`,
+        registrazione: 1,
+        pagamento: false,
+        created_at: new Date().toISOString(), // Set new creation date for duplicated record
+        user_id: user?.id
+      };
+
+      // Inserisci la nuova pratica
+      const { error } = await supabase
+        .from('ape')
+        .insert([duplicatedData]);
+
+      if (error) {
+        console.error('Errore duplicazione pratica:', error);
+        toast.error('Errore nella duplicazione della pratica APE');
+        return;
+      }
+
+      // Forza un refresh completo dei dati
+      await fetchData();
+      toast.success('Pratica APE duplicata con successo');
+
+      // Deseleziona le righe dopo la duplicazione
+      setSelectedRows(new Set());
+    } catch (error) {
+      console.error('Errore:', error);
+      toast.error('Errore nella duplicazione della pratica');
+    }
   };
 
   const getTotalPages = () => {
@@ -436,10 +827,11 @@ export const ApePage: React.FC = () => {
   const handleTogglePagamento = async (pratica: Ape) => {
     try {
       const nuovoPagamento = !pratica.pagamento;
+      console.log('Toggling pagamento for pratica', pratica.id, 'from', pratica.pagamento, 'to', nuovoPagamento);
       
       const { error } = await supabase
         .from('ape')
-        .update({ 
+        .update({
           pagamento: nuovoPagamento,
           updated_at: new Date().toISOString()
         })
@@ -452,8 +844,21 @@ export const ApePage: React.FC = () => {
         return;
       }
 
+      // Forza un aggiornamento locale immediato per feedback visivo istantaneo
+      setPratiche(prev =>
+        prev.map(p =>
+          p.id === pratica.id ? { ...p, pagamento: nuovoPagamento } : p
+        )
+      );
+
       toast.success(nuovoPagamento ? 'Pagamento marcato come effettuato' : 'Pagamento marcato come non effettuato');
-      fetchData();
+      
+      // Se il realtime non funziona o stiamo forzando il refresh, marca che serve un refresh manuale
+      setTimeout(() => {
+        if (!realtimeConnected || forceRefresh) {
+          setManualRefreshNeeded(true);
+        }
+      }, 2000);
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nell\'aggiornamento del pagamento');
@@ -466,6 +871,8 @@ export const ApePage: React.FC = () => {
     }
 
     try {
+      console.log('Deleting pratica:', id);
+      
       const { error } = await supabase
         .from('ape')
         .delete()
@@ -477,8 +884,13 @@ export const ApePage: React.FC = () => {
         return;
       }
 
+      // Forza un refresh completo anche per l'eliminazione
+      console.log('Forcing complete data refresh after deletion');
+      setForceRefresh(true);
+      await fetchData();
+      setForceRefresh(false);
+
       toast.success('Pratica APE eliminata con successo');
-      fetchData();
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nell\'eliminazione');
@@ -486,56 +898,30 @@ export const ApePage: React.FC = () => {
   };
 
   const getStatoStyle = (stato: StatoApe | undefined) => {
-    if (!stato) {
-      return {
-        backgroundColor: '#f3f4f6',
-        color: '#374151'
-      };
-    }
-    
-    // Utilizza direttamente il colore dal database
-    const backgroundColor = stato.colore || '#6b7280';
-    
-    // Calcola automaticamente il colore del testo in base alla luminosità del background
-    const getTextColor = (bgColor: string) => {
-      // Rimuovi il # se presente
-      const hex = bgColor.replace('#', '');
-      
-      // Converti in RGB
-      const r = parseInt(hex.substr(0, 2), 16);
-      const g = parseInt(hex.substr(2, 2), 16);
-      const b = parseInt(hex.substr(4, 2), 16);
-      
-      // Calcola la luminosità
-      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      
-      // Restituisci bianco per sfondi scuri, nero per sfondi chiari
-      return luminance > 0.5 ? '#000000' : '#ffffff';
-    };
-    
-    return {
-      backgroundColor,
-      color: getTextColor(backgroundColor)
-    };
+    if (!stato || !stato.colore) return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
+    return `text-white`;
   };
 
-  const renderPagamentoToggle = (pratica: Ape) => {
+  const getStatoBackgroundColor = (stato: StatoApe | undefined) => {
+    if (!stato || !stato.colore) return '#6b7280';
+    return stato.colore;
+  };
+
+  const renderToggleButton = (value: boolean) => {
     return (
-      <button
-        onClick={() => handleTogglePagamento(pratica)}
+      <div
         className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 hover:scale-110 ${
-          pratica.pagamento 
-            ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50' 
+          value
+            ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50'
             : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600'
         }`}
-        title={pratica.pagamento ? 'Marcato come pagato - Clicca per rimuovere' : 'Non pagato - Clicca per marcare come pagato'}
       >
-        {pratica.pagamento ? (
+        {value ? (
           <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
         ) : (
           <X className="w-4 h-4 text-gray-400 dark:text-gray-500" />
         )}
-      </button>
+      </div>
     );
   };
 
@@ -550,94 +936,176 @@ export const ApePage: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Gestione APE</h1>
           <p className="text-gray-600 dark:text-gray-300">Gestione pratiche APE</p>
+          {realtimeConnected && (
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-xs text-green-600 dark:text-green-400">
+                Aggiornamenti in tempo reale attivi
+                {lastUpdateTime && (
+                  <span className="ml-1 text-gray-500 dark:text-gray-400">
+                    (ultimo: {lastUpdateTime.toLocaleTimeString('it-IT')})
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
-        <button
-          onClick={openCreateModal}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Nuova Pratica APE
-        </button>
+        <div className="flex items-center gap-3">
+          {manualRefreshNeeded && (
+            <button
+              onClick={() => {
+                fetchData();
+                setManualRefreshNeeded(false);
+              }}
+              className="btn btn-outline flex items-center gap-2 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              title="Aggiorna dati"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Aggiorna
+            </button>
+          )}
+          <button
+            onClick={openCreateModal}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Nuova Pratica APE
+          </button>
+        </div>
       </div>
 
       {/* Filtri */}
       <div className="card space-y-4 dark:bg-gray-800 dark:border-gray-700">
-        {/* Filtri */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Campo di ricerca */}
-          <div className="relative">
+           {/* Campo di ricerca */}
+           <div className="relative">
+             <input
+               type="text"
+               value={searchTerm}
+               onChange={(e) => setSearchTerm(e.target.value)}
+               onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+               placeholder="Cerca committente, indirizzo..."
+               className="input pl-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+             />
+             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+             <button
+               onClick={handleSearch}
+               className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-500 text-white p-1 rounded"
+             >
+               <Search className="w-4 h-4" />
+             </button>
+           </div>
+
+           {/* Filtro Stati APE */}
+           <div className="relative">
+             <select
+               value={filtroStato}
+               onChange={(e) => {
+                 const newFiltroStato = e.target.value;
+                 setFiltroStato(newFiltroStato);
+                 setCurrentPage(1); // Reset alla prima pagina quando cambia il filtro
+                 // Trigger automatico della ricerca con il nuovo stato
+                 fetchData({
+                   filtroStato: newFiltroStato,
+                   page: 1
+                 });
+               }}
+               className="input pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+             >
+               <option value="">-- Tutti gli stati APE --</option>
+               {stati.map((stato) => (
+                 <option key={stato.id} value={stato.id}>
+                   {stato.descrizione}
+                 </option>
+               ))}
+             </select>
+             <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+           </div>
+
+           {/* Filtro Anno */}
+           <div className="relative">
+             <select
+               value={filtroAnno}
+               onChange={(e) => {
+                 const newFiltroAnno = e.target.value;
+                 setFiltroAnno(newFiltroAnno);
+                 setCurrentPage(1); // Reset alla prima pagina quando cambia il filtro
+                 // Trigger automatico della ricerca con il nuovo anno
+                 fetchData({
+                   filtroAnno: newFiltroAnno,
+                   page: 1
+                 });
+               }}
+               className="input pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+             >
+               <option value="">-- Tutti gli anni --</option>
+               {availableYears.map((year) => (
+                 <option key={year} value={year.toString()}>
+                   {year}
+                 </option>
+               ))}
+             </select>
+             <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+           </div>
+         </div>
+
+        {/* Filtri toggle */}
+        <div className="flex flex-wrap gap-4">
+          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+            filtriAttivi.soloNonPagate
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          }`}>
             <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Cerca..."
-              className="input pl-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+              type="checkbox"
+              checked={filtriAttivi.soloNonPagate}
+              onChange={() => handleFilterToggle('soloNonPagate')}
+              className="sr-only"
             />
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
-            <button
-              onClick={handleSearch}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-emerald-500 text-white p-1 rounded"
-            >
-              <Search className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Filtro Stati APE */}
-          <div className="relative">
-            <select
-              value={filtroStato}
-              onChange={(e) => {
-                const newFiltroStato = e.target.value;
-                setFiltroStato(newFiltroStato);
-                setCurrentPage(1); // Reset alla prima pagina quando cambia il filtro
-                // Trigger automatico della ricerca con il nuovo stato
-                fetchData({
-                  filtroStato: newFiltroStato,
-                  page: 1
-                });
-              }}
-              className="input pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-            >
-              <option value="">-- Tutti gli stati APE --</option>
-              {stati.map((stato) => (
-                <option key={stato.id} value={stato.id}>
-                  {stato.descrizione}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
-          </div>
-
-          {/* Filtro Non pagate */}
-          <div className="flex items-center">
-            <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 w-full justify-center ${
-              filtriAttivi.soloNonPagate 
-                ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+              filtriAttivi.soloNonPagate
+                ? 'border-white bg-white'
+                : 'border-gray-400 dark:border-gray-500 bg-transparent'
             }`}>
-              <input
-                type="checkbox"
-                checked={filtriAttivi.soloNonPagate}
-                onChange={() => handleFilterToggle('soloNonPagate')}
-                className="sr-only"
-              />
-              <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
-                filtriAttivi.soloNonPagate 
-                  ? 'border-white bg-white' 
-                  : 'border-gray-400 dark:border-gray-500 bg-transparent'
-              }`}>
-                {filtriAttivi.soloNonPagate && (
-                  <svg className="w-3 h-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </div>
-              <span className="text-sm font-medium">Non pagate</span>
-            </label>
-          </div>
+              {filtriAttivi.soloNonPagate && (
+                <svg className="w-3 h-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              )}
+            </div>
+            <span className="text-sm font-medium">Non pagate</span>
+          </label>
         </div>
       </div>
+
+      {/* Sezione azioni multiple (appare solo quando ci sono righe selezionate) */}
+      {selectedRows.size > 0 && (
+        <div className="card bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 dark:border-blue-400">
+          <div className="p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                {selectedRows.size} pratica{selectedRows.size !== 1 ? 'he' : ''} selezionata{selectedRows.size !== 1 ? 'e' : ''}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="btn btn-primary flex items-center gap-2"
+                  disabled={selectedRows.size !== 1}
+                  onClick={() => {
+                    const selectedPratica = pratiche.find(p => selectedRows.has(p.id));
+                    if (selectedPratica) {
+                      handleDuplicatePratica(selectedPratica);
+                    }
+                  }}
+                >
+                  Duplica pratica
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Contenuto principale */}
       {loading ? (
@@ -660,6 +1128,28 @@ export const ApePage: React.FC = () => {
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <tr>
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <label className="flex items-center justify-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedRows.size === pratiche.length && pratiche.length > 0}
+                        onChange={handleSelectAll}
+                        className="sr-only"
+                        title={selectedRows.size === pratiche.length ? "Deseleziona tutto" : "Seleziona tutto"}
+                      />
+                      <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+                        selectedRows.size === pratiche.length && pratiche.length > 0
+                          ? 'border-blue-600 bg-blue-600 dark:border-blue-400 dark:bg-blue-400'
+                          : 'border-gray-300 dark:border-gray-600 bg-transparent'
+                      }`}>
+                        {selectedRows.size === pratiche.length && pratiche.length > 0 && (
+                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </div>
+                    </label>
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Stato
                   </th>
@@ -676,10 +1166,10 @@ export const ApePage: React.FC = () => {
                     Città
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Mail
+                    Telefono
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Telefono
+                    Mail
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Note
@@ -690,9 +1180,6 @@ export const ApePage: React.FC = () => {
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Pagamento
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Data Creazione
-                  </th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Azioni
                   </th>
@@ -701,10 +1188,31 @@ export const ApePage: React.FC = () => {
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {pratiche.map((pratica) => (
                   <tr key={pratica.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="px-4 py-3 text-center">
+                      <label className="flex items-center justify-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedRows.has(pratica.id)}
+                          onChange={() => handleRowSelection(pratica.id)}
+                          className="sr-only"
+                        />
+                        <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+                          selectedRows.has(pratica.id)
+                            ? 'border-blue-600 bg-blue-600 dark:border-blue-400 dark:bg-blue-400'
+                            : 'border-gray-300 dark:border-gray-600 bg-transparent'
+                        }`}>
+                          {selectedRows.has(pratica.id) && (
+                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
+                      </label>
+                    </td>
                     <td className="px-4 py-3">
-                      <span 
-                        className="inline-flex px-2 py-1 text-xs font-semibold rounded"
-                        style={getStatoStyle(pratica.registrazione_info)}
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(pratica.registrazione_info)}`}
+                        style={{ backgroundColor: getStatoBackgroundColor(pratica.registrazione_info) }}
                       >
                         {pratica.registrazione_info?.descrizione || 'N/A'}
                       </span>
@@ -713,7 +1221,7 @@ export const ApePage: React.FC = () => {
                       {pratica.committente}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {pratica.proprieta || '-'}
+                      {combineProprieta(pratica.proprieta, pratica.proprieta2)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                       {pratica.indirizzo || '-'}
@@ -722,10 +1230,10 @@ export const ApePage: React.FC = () => {
                       {pratica.citta || '-'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {pratica.mail || '-'}
+                      {combineTelefoni(pratica.telefono, pratica.telefono2)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {pratica.telefono || '-'}
+                      {pratica.mail || '-'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 max-w-xs truncate">
                       {pratica.note || '-'}
@@ -734,10 +1242,13 @@ export const ApePage: React.FC = () => {
                       {pratica.progressivo || '-'}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {renderPagamentoToggle(pratica)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {formatDate(pratica.created_at)}
+                      <button
+                        onClick={() => handleTogglePagamento(pratica)}
+                        className="transition-colors cursor-pointer"
+                        title="Clicca per cambiare stato"
+                      >
+                        {renderToggleButton(pratica.pagamento)}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-1">
@@ -890,187 +1401,218 @@ export const ApePage: React.FC = () => {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Prima riga - Committente e Proprietà */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Committente *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.committente}
-                    onChange={(e) => handleInputChange('committente', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="Nome del committente"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Proprietà
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.proprieta}
-                    onChange={(e) => handleInputChange('proprieta', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="Nome del proprietario"
-                  />
-                </div>
-              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Committente *
+                    </label>
+                    <input
+                      type="text"
+                      name="committente"
+                      required
+                      value={formData.committente}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Nome del committente"
+                    />
+                  </div>
 
-              {/* Seconda riga - Indirizzo e Città */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Indirizzo
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.indirizzo}
-                    onChange={(e) => handleInputChange('indirizzo', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="Via, numero civico"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Città
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.citta}
-                    onChange={(e) => handleInputChange('citta', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="Città"
-                  />
-                </div>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Proprietà
+                    </label>
+                    <input
+                      type="text"
+                      name="proprieta"
+                      value={formData.proprieta}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Nome del proprietario"
+                    />
+                  </div>
 
-              {/* Terza riga - Email e Telefono */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.mail}
-                    onChange={(e) => handleInputChange('mail', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="email@esempio.com"
-                  />
-                </div>
-                                 <div>
-                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                     Telefono
-                   </label>
-                   <input
-                     type="tel"
-                     value={formData.telefono}
-                     onChange={(e) => handleInputChange('telefono', e.target.value)}
-                     className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                     placeholder="123 456 7890"
-                     maxLength={12}
-                   />
-                 </div>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Proprietà 2
+                    </label>
+                    <input
+                      type="text"
+                      name="proprieta2"
+                      value={formData.proprieta2}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Nome secondo proprietario"
+                    />
+                  </div>
 
-              {/* Quarta riga - Stato e Progressivo */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Stato Registrazione
-                  </label>
-                  <select
-                    value={formData.registrazione || ''}
-                    onChange={(e) => handleInputChange('registrazione', e.target.value ? parseInt(e.target.value) : null)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                  >
-                    <option value="">-- Seleziona stato --</option>
-                    {stati.map((stato) => (
-                      <option key={stato.id} value={stato.id}>
-                        {stato.descrizione}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Progressivo
-                    {formData.progressivo && formData.registrazione && stati.find(s => s.id === formData.registrazione && s.descrizione.toLowerCase().includes('completata')) && (
-                      <span className="ml-2 text-xs text-green-600 dark:text-green-400">(generato automaticamente)</span>
-                    )}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.progressivo}
-                    onChange={(e) => handleInputChange('progressivo', e.target.value)}
-                    className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    placeholder="Sarà generato automaticamente quando 'Completata'"
-                  />
-                </div>
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Indirizzo
+                    </label>
+                    <input
+                      type="text"
+                      name="indirizzo"
+                      value={formData.indirizzo}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Via, numero civico"
+                    />
+                  </div>
 
-              {/* Note */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Note
-                </label>
-                <textarea
-                  value={formData.note}
-                  onChange={(e) => handleInputChange('note', e.target.value)}
-                  rows={3}
-                  className="input dark:bg-gray-700 dark:border-gray-600 dark:text-white resize-none"
-                  placeholder="Note aggiuntive..."
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Città
+                    </label>
+                    <input
+                      type="text"
+                      name="citta"
+                      value={formData.citta}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Città"
+                    />
+                  </div>
 
-              {/* Checkbox Pagamento */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Stato Pagamento
-                </label>
-                <div className="flex items-center gap-4">
-                  <label className={`relative inline-flex items-center cursor-pointer p-3 rounded-lg border-2 transition-all duration-200 ${
-                    formData.pagamento 
-                      ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
-                      : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50'
-                  }`}>
-                    <div className="relative">
+                  <div className="pt-4">
+                    <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${
+                      formData.pagamento
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300 cursor-pointer'
+                        : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                    }`}>
                       <input
                         type="checkbox"
+                        name="pagamento"
                         checked={formData.pagamento}
-                        onChange={(e) => handleInputChange('pagamento', e.target.checked)}
+                        onChange={handleInputChange}
                         className="sr-only"
                       />
-                      <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
-                        formData.pagamento 
-                          ? 'bg-green-500 border-green-500' 
-                          : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'
+                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
+                        formData.pagamento
+                          ? 'border-blue-500 bg-blue-500'
+                          : 'border-gray-300 dark:border-gray-500 bg-transparent'
                       }`}>
                         {formData.pagamento && (
-                          <Check className="w-4 h-4 text-white" />
+                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
                         )}
                       </div>
+                      <span className="text-sm font-medium">Pagamento</span>
+                    </label>
+                  </div>
+
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Telefono
+                    </label>
+                    <input
+                      type="tel"
+                      name="telefono"
+                      value={formData.telefono}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="XXX XXX XXXX"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Telefono 2
+                    </label>
+                    <input
+                      type="tel"
+                      name="telefono2"
+                      value={formData.telefono2}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="XXX XXX XXXX"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      name="mail"
+                      value={formData.mail}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="email@esempio.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Stato Registrazione
+                    </label>
+                    <div className="relative">
+                      <select
+                        name="registrazione"
+                        value={formData.registrazione || ''}
+                        onChange={handleInputChange}
+                        className="input w-full pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      >
+                        <option value="">-- Seleziona stato --</option>
+                        {stati.map((stato) => (
+                          <option key={stato.id} value={stato.id}>
+                            {stato.descrizione}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
                     </div>
-                    <div className="ml-3">
-                      <div className={`text-sm font-medium transition-colors ${
-                        formData.pagamento 
-                          ? 'text-green-700 dark:text-green-300' 
-                          : 'text-gray-700 dark:text-gray-300'
-                      }`}>
-                        {formData.pagamento ? 'Pagamento effettuato' : 'Pagamento in sospeso'}
-                      </div>
-                      <div className={`text-xs transition-colors ${
-                        formData.pagamento 
-                          ? 'text-green-600 dark:text-green-400' 
-                          : 'text-gray-500 dark:text-gray-400'
-                      }`}>
-                        {formData.pagamento ? 'La pratica è stata saldata' : 'In attesa di pagamento'}
-                      </div>
-                    </div>
-                  </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Data Creazione
+                    </label>
+                    <input
+                      type="date"
+                      name="created_at"
+                      value={formData.created_at}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Progressivo
+                      {formData.progressivo && formData.registrazione && stati.find(s => s.id === formData.registrazione && s.descrizione.toLowerCase().includes('completata')) && (
+                        <span className="ml-2 text-xs text-green-600 dark:text-green-400">(generato automaticamente)</span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      name="progressivo"
+                      value={formData.progressivo}
+                      onChange={handleInputChange}
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      placeholder="Sarà generato automaticamente quando 'Completata'"
+                    />
+                  </div>
+
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Note
+                    </label>
+                    <textarea
+                      name="note"
+                      value={formData.note}
+                      onChange={handleInputChange}
+                      placeholder="Note aggiuntive"
+                      rows={4}
+                      className="input w-full resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
                 </div>
               </div>
 

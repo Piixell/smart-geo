@@ -7,7 +7,7 @@ export const AppLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+    <div className="flex h-screen max-h-screen overflow-hidden bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Sidebar */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       
@@ -17,8 +17,9 @@ export const AppLayout: React.FC = () => {
         <Header onMenuClick={() => setSidebarOpen(true)} />
         
         {/* Page content */}
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50 dark:bg-gray-900 p-6 transition-colors">
-          <div className="w-full px-4">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 dark:bg-gray-900 transition-colors"
+              style={{ height: 'calc(100vh - 3.5rem - 3rem)', padding: '1.5rem' }}>
+          <div className="w-full">
             <Outlet />
           </div>
         </main>

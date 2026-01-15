@@ -25,11 +25,14 @@ export const VariePage: React.FC = () => {
   const [formData, setFormData] = useState({
     committente: '',
     proprieta: '',
+    proprieta2: '',
     indirizzo: '',
     citta: '',
     telefono: '',
+    telefono2: '',
     mail: '',
     registrazione: '',
+    tipo_incarico: '',
     pagamento: false,
     note: ''
   });
@@ -39,11 +42,11 @@ export const VariePage: React.FC = () => {
   useEffect(() => {
     const filter = searchParams.get('filter');
     let newFiltriAttivi = { ...filtriAttivi };
-    
+
     if (filter === 'non_pagate') {
       newFiltriAttivi = { ...newFiltriAttivi, nonPagati: true };
     }
-    
+
     // Solo se c'è un filtro da applicare e l'user è presente
     if (filter && user?.id && !authLoading) {
       setFiltriAttivi(newFiltriAttivi);
@@ -101,20 +104,20 @@ export const VariePage: React.FC = () => {
   }) => {
     try {
       setLoading(true);
-      
+
       // Verifica che l'utente sia autenticato
       if (!user?.id) {
         console.warn('Utente non autenticato, impossibile caricare i dati');
         setLoading(false);
         return;
       }
-      
+
       const currentSearchTerm = customFilters?.searchTerm ?? searchTerm;
       const currentFiltroStato = customFilters?.filtroStato ?? filtroStato;
       const currentFiltriAttivi = customFilters?.filtriAttivi ?? filtriAttivi;
       const currentPageParam = customFilters?.page ?? currentPage;
       const currentPerPage = customFilters?.perPage ?? recordsPerPage;
-      
+
       // Query per contare il totale
       let countQuery = supabase
         .from('varie')
@@ -123,7 +126,7 @@ export const VariePage: React.FC = () => {
 
       // Applica filtri al conteggio
       if (currentSearchTerm) {
-        countQuery = countQuery.or(`committente.ilike.%${currentSearchTerm}%,indirizzo.ilike.%${currentSearchTerm}%,proprieta.ilike.%${currentSearchTerm}%`);
+        countQuery = countQuery.or(`committente.ilike.%${currentSearchTerm}%,indirizzo.ilike.%${currentSearchTerm}%,proprieta.ilike.%${currentSearchTerm}%,proprieta2.ilike.%${currentSearchTerm}%,citta.ilike.%${currentSearchTerm}%,mail.ilike.%${currentSearchTerm}%,note.ilike.%${currentSearchTerm}%,telefono.ilike.%${currentSearchTerm}%,telefono2.ilike.%${currentSearchTerm}%,tipo_incarico.ilike.%${currentSearchTerm}%`);
       }
 
       if (currentFiltroStato) {
@@ -135,7 +138,7 @@ export const VariePage: React.FC = () => {
       }
 
       const { count, error: countError } = await countQuery;
-      
+
       if (countError) {
         console.error('Errore nel conteggio:', countError);
         // Se l'errore è relativo alla sessione, mostra un messaggio specifico
@@ -145,7 +148,7 @@ export const VariePage: React.FC = () => {
       } else {
         setTotalRecords(count || 0);
       }
-      
+
       // Query principale con paginazione
       let query = supabase
         .from('varie')
@@ -158,7 +161,7 @@ export const VariePage: React.FC = () => {
 
       // Applica filtri
       if (currentSearchTerm) {
-        query = query.or(`committente.ilike.%${currentSearchTerm}%,indirizzo.ilike.%${currentSearchTerm}%,proprieta.ilike.%${currentSearchTerm}%`);
+        query = query.or(`committente.ilike.%${currentSearchTerm}%,indirizzo.ilike.%${currentSearchTerm}%,proprieta.ilike.%${currentSearchTerm}%,proprieta2.ilike.%${currentSearchTerm}%,citta.ilike.%${currentSearchTerm}%,mail.ilike.%${currentSearchTerm}%,note.ilike.%${currentSearchTerm}%,telefono.ilike.%${currentSearchTerm}%,telefono2.ilike.%${currentSearchTerm}%,tipo_incarico.ilike.%${currentSearchTerm}%`);
       }
 
       if (currentFiltroStato) {
@@ -216,7 +219,7 @@ export const VariePage: React.FC = () => {
         console.log('Autenticazione in corso...');
         return;
       }
-      
+
       // Se c'è un user, carica i dati
       if (user?.id) {
         console.log('User autenticato, caricamento dati...');
@@ -241,10 +244,10 @@ export const VariePage: React.FC = () => {
       ...filtriAttivi,
       [filterName]: !filtriAttivi[filterName]
     };
-    
+
     setFiltriAttivi(newFiltriAttivi);
     setCurrentPage(1);
-    
+
     fetchData({
       filtriAttivi: newFiltriAttivi,
       page: 1
@@ -259,7 +262,7 @@ export const VariePage: React.FC = () => {
   const handleRecordsPerPageChange = (newRecordsPerPage: number) => {
     setRecordsPerPage(newRecordsPerPage);
     setCurrentPage(1);
-    fetchData({ 
+    fetchData({
       perPage: newRecordsPerPage,
       page: 1
     });
@@ -272,7 +275,7 @@ export const VariePage: React.FC = () => {
   const handleToggleField = async (varia: Varie, field: 'pagamento') => {
     try {
       const newValue = !varia[field];
-      
+
       const { error } = await supabase
         .from('varie')
         .update({ [field]: newValue })
@@ -320,7 +323,7 @@ export const VariePage: React.FC = () => {
   const formatTelefono = (value: string): string => {
     const numericValue = value.replace(/\D/g, '');
     const limitedValue = numericValue.slice(0, 10);
-    
+
     if (limitedValue.length <= 3) {
       return limitedValue;
     } else if (limitedValue.length <= 6) {
@@ -330,6 +333,27 @@ export const VariePage: React.FC = () => {
     }
   };
 
+  // Funzione per combinare i telefoni
+  const combineTelefoni = (telefono1: string | null | undefined, telefono2: string | null | undefined): string => {
+    const formatted1 = telefono1 ? formatTelefono(telefono1) : '';
+    const formatted2 = telefono2 ? formatTelefono(telefono2) : '';
+
+    if (!formatted1 && !formatted2) return '-';
+    if (!formatted2) return formatted1;
+    if (!formatted1) return formatted2;
+
+    return `${formatted1} / ${formatted2}`;
+  };
+
+  // Funzione per combinare le proprietà
+  const combineProprieta = (proprieta1: string | null | undefined, proprieta2: string | null | undefined): string => {
+    if (!proprieta1 && !proprieta2) return '-';
+    if (!proprieta2) return proprieta1 || '-';
+    if (!proprieta1) return proprieta2 || '-';
+
+    return `${proprieta1} / ${proprieta2}`;
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     if (!e || !e.target) {
       console.warn('Evento malformato ignorato');
@@ -337,15 +361,19 @@ export const VariePage: React.FC = () => {
     }
 
     const { name, value, type } = e.target;
-    
+
     if (!name) {
       console.warn('Nome campo non definito');
       return;
     }
 
     let processedValue = value;
-    
+
     if (name === 'telefono' && type !== 'checkbox') {
+      processedValue = formatTelefono(value);
+    }
+
+    if (name === 'telefono2' && type !== 'checkbox') {
       processedValue = formatTelefono(value);
     }
 
@@ -357,7 +385,7 @@ export const VariePage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.committente.trim()) {
       toast.error('Il campo committente è obbligatorio');
       return;
@@ -368,6 +396,9 @@ export const VariePage: React.FC = () => {
       const dataToSave = {
         ...formData,
         registrazione: formData.registrazione ? parseInt(formData.registrazione) : null,
+        tipo_incarico: formData.tipo_incarico.trim() || null,
+        proprieta2: formData.proprieta2.trim() || null,
+        telefono2: formData.telefono2.trim() || null,
         user_id: user?.id
       };
 
@@ -415,11 +446,14 @@ export const VariePage: React.FC = () => {
       setFormData({
         committente: varia.committente,
         proprieta: varia.proprieta || '',
+        proprieta2: varia.proprieta2 || '',
         indirizzo: varia.indirizzo || '',
         citta: varia.citta || '',
         telefono: varia.telefono || '',
+        telefono2: varia.telefono2 || '',
         mail: varia.mail || '',
         registrazione: varia.registrazione?.toString() || '',
+        tipo_incarico: varia.tipo_incarico || '',
         pagamento: varia.pagamento,
         note: varia.note || ''
       });
@@ -428,11 +462,14 @@ export const VariePage: React.FC = () => {
       setFormData({
         committente: '',
         proprieta: '',
+        proprieta2: '',
         indirizzo: '',
         citta: '',
         telefono: '',
+        telefono2: '',
         mail: '',
         registrazione: '',
+        tipo_incarico: '',
         pagamento: false,
         note: ''
       });
@@ -446,11 +483,14 @@ export const VariePage: React.FC = () => {
     setFormData({
       committente: '',
       proprieta: '',
+      proprieta2: '',
       indirizzo: '',
       citta: '',
       telefono: '',
+      telefono2: '',
       mail: '',
       registrazione: '',
+      tipo_incarico: '',
       pagamento: false,
       note: ''
     });
@@ -469,11 +509,10 @@ export const VariePage: React.FC = () => {
   const renderToggleButton = (value: boolean) => {
     return (
       <div
-        className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 hover:scale-110 ${
-          value 
-            ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50' 
+        className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 hover:scale-110 ${value
+            ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50'
             : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600'
-        }`}
+          }`}
       >
         {value ? (
           <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
@@ -551,22 +590,20 @@ export const VariePage: React.FC = () => {
 
         {/* Filtri toggle */}
         <div className="flex flex-wrap gap-4">
-          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
-            filtriAttivi.nonPagati 
-              ? 'bg-blue-600 text-white shadow-md' 
+          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${filtriAttivi.nonPagati
+              ? 'bg-blue-600 text-white shadow-md'
               : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-          }`}>
+            }`}>
             <input
               type="checkbox"
               checked={filtriAttivi.nonPagati}
               onChange={() => handleFilterToggle('nonPagati')}
               className="sr-only"
             />
-            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
-              filtriAttivi.nonPagati 
-                ? 'border-white bg-white' 
+            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${filtriAttivi.nonPagati
+                ? 'border-white bg-white'
                 : 'border-gray-400 dark:border-gray-500 bg-transparent'
-            }`}>
+              }`}>
               {filtriAttivi.nonPagati && (
                 <svg className="w-3 h-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -585,6 +622,7 @@ export const VariePage: React.FC = () => {
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Stato</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tipo Incarico</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Committente</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Proprietario</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Indirizzo</th>
@@ -599,7 +637,7 @@ export const VariePage: React.FC = () => {
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {loading || authLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={11} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="ml-2">
@@ -610,7 +648,7 @@ export const VariePage: React.FC = () => {
                 </tr>
               ) : varie.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={11} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                     Nessuna varia trovata
                   </td>
                 </tr>
@@ -618,18 +656,19 @@ export const VariePage: React.FC = () => {
                 varie.map((varia) => (
                   <tr key={varia.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="px-4 py-3">
-                      <span 
+                      <span
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(varia.registrazione_info)}`}
                         style={{ backgroundColor: getStatoBackgroundColor(varia.registrazione_info) }}
                       >
                         {varia.registrazione_info?.descrizione || 'N/A'}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{varia.tipo_incarico || '-'}</td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{varia.committente}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{varia.proprieta || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{combineProprieta(varia.proprieta, varia.proprieta2)}</td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{varia.indirizzo || '-'}</td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{varia.citta || '-'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{varia.telefono || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{combineTelefoni(varia.telefono, varia.telefono2)}</td>
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{varia.mail || '-'}</td>
                     <td className="px-4 py-3 text-center">
                       <button
@@ -665,7 +704,7 @@ export const VariePage: React.FC = () => {
             </tbody>
           </table>
         </div>
-        
+
         {/* Controlli Paginazione */}
         {varie.length > 0 && (
           <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
@@ -673,7 +712,7 @@ export const VariePage: React.FC = () => {
               <div className="text-sm text-gray-500 dark:text-gray-400">
                 Mostrando {Math.min((currentPage - 1) * recordsPerPage + 1, totalRecords)} - {Math.min(currentPage * recordsPerPage, totalRecords)} di {totalRecords} varie
               </div>
-              
+
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-gray-500 dark:text-gray-400">Record:</span>
@@ -688,7 +727,7 @@ export const VariePage: React.FC = () => {
                     <option value={200}>200</option>
                   </select>
                 </div>
-                
+
                 {getTotalPages() > 1 && (
                   <div className="flex items-center gap-2">
                     <button
@@ -698,7 +737,7 @@ export const VariePage: React.FC = () => {
                     >
                       ««
                     </button>
-                    
+
                     <button
                       onClick={() => handlePageChange(currentPage - 1)}
                       disabled={currentPage === 1}
@@ -706,7 +745,7 @@ export const VariePage: React.FC = () => {
                     >
                       ‹
                     </button>
-                    
+
                     {Array.from({ length: Math.min(5, getTotalPages()) }, (_, i) => {
                       let pageNum;
                       if (getTotalPages() <= 5) {
@@ -718,22 +757,21 @@ export const VariePage: React.FC = () => {
                       } else {
                         pageNum = currentPage - 2 + i;
                       }
-                      
+
                       return (
                         <button
                           key={pageNum}
                           onClick={() => handlePageChange(pageNum)}
-                          className={`px-3 py-1 text-sm border rounded ${
-                            currentPage === pageNum
+                          className={`px-3 py-1 text-sm border rounded ${currentPage === pageNum
                               ? 'bg-blue-500 text-white border-blue-500'
                               : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 dark:text-gray-300'
-                          }`}
+                            }`}
                         >
                           {pageNum}
                         </button>
                       );
                     })}
-                    
+
                     <button
                       onClick={() => handlePageChange(currentPage + 1)}
                       disabled={currentPage === getTotalPages()}
@@ -741,7 +779,7 @@ export const VariePage: React.FC = () => {
                     >
                       ›
                     </button>
-                    
+
                     <button
                       onClick={() => handlePageChange(getTotalPages())}
                       disabled={currentPage === getTotalPages()}
@@ -752,7 +790,7 @@ export const VariePage: React.FC = () => {
                   </div>
                 )}
               </div>
-              
+
               {getTotalPages() > 1 && (
                 <div className="text-sm text-gray-500 dark:text-gray-400">
                   Pagina {currentPage} di {getTotalPages()}
@@ -813,6 +851,20 @@ export const VariePage: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Proprietario 2
+                    </label>
+                    <input
+                      type="text"
+                      name="proprieta2"
+                      value={formData.proprieta2}
+                      onChange={handleInputChange}
+                      placeholder="Nome secondo proprietario"
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Indirizzo
                     </label>
                     <input
@@ -841,6 +893,23 @@ export const VariePage: React.FC = () => {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Note
+                    </label>
+                    <textarea
+                      name="note"
+                      value={formData.note}
+                      onChange={handleInputChange}
+                      placeholder="Note aggiuntive"
+                      rows={4}
+                      className="input w-full resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Telefono
                     </label>
                     <input
@@ -852,9 +921,21 @@ export const VariePage: React.FC = () => {
                       className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
                     />
                   </div>
-                </div>
 
-                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Telefono 2
+                    </label>
+                    <input
+                      type="tel"
+                      name="telefono2"
+                      value={formData.telefono2}
+                      onChange={handleInputChange}
+                      placeholder="XXX XXX XXXX"
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       Email
@@ -892,11 +973,24 @@ export const VariePage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${
-                      formData.pagamento 
-                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300 cursor-pointer' 
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Tipo Incarico
+                    </label>
+                    <input
+                      type="text"
+                      name="tipo_incarico"
+                      value={formData.tipo_incarico}
+                      onChange={handleInputChange}
+                      placeholder="Tipo di incarico"
+                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${formData.pagamento
+                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300 cursor-pointer'
                         : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
-                    }`}>
+                      }`}>
                       <input
                         type="checkbox"
                         name="pagamento"
@@ -904,11 +998,10 @@ export const VariePage: React.FC = () => {
                         onChange={handleInputChange}
                         className="sr-only"
                       />
-                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
-                        formData.pagamento 
-                          ? 'border-blue-500 bg-blue-500' 
+                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${formData.pagamento
+                          ? 'border-blue-500 bg-blue-500'
                           : 'border-gray-300 dark:border-gray-500 bg-transparent'
-                      }`}>
+                        }`}>
                         {formData.pagamento && (
                           <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -917,20 +1010,6 @@ export const VariePage: React.FC = () => {
                       </div>
                       <span className="text-sm font-medium">Pagamento</span>
                     </label>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Note
-                    </label>
-                    <textarea
-                      name="note"
-                      value={formData.note}
-                      onChange={handleInputChange}
-                      placeholder="Note aggiuntive"
-                      rows={4}
-                      className="input w-full resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
-                    />
                   </div>
                 </div>
               </div>

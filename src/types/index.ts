@@ -53,29 +53,16 @@ export interface TipoIncarico {
   updated_at: string;
 }
 
-export interface TipologiaContatto {
-  id: number;
-  nome: string;
-  descrizione?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TipologiaAppartenenza {
-  id: number;
-  nome: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface ComuneCatasto {
   id: number;
   committente: string;
   indirizzo?: string;
   citta?: string;
   proprieta?: string;
+  proprieta2?: string;
   mail?: string;
   telefono?: string;
+  telefono2?: string;
   note?: string;
   comune: boolean;
   catasto: boolean;
@@ -94,10 +81,12 @@ export interface Ape {
   id: number;
   committente: string;
   proprieta?: string;
+  proprieta2?: string;
   indirizzo?: string;
   citta?: string;
   mail?: string;
   telefono?: string;
+  telefono2?: string;
   note?: string;
   registrazione?: number;
   progressivo?: string;
@@ -112,35 +101,30 @@ export interface Varie {
   id: number;
   committente: string;
   proprieta?: string;
+  proprieta2?: string;
   indirizzo?: string;
   citta?: string;
   mail?: string;
   telefono?: string;
+  telefono2?: string;
   note?: string;
   registrazione?: number;
-  tipo_incarico_id?: number;
+  tipo_incarico?: string;
   pagamento: boolean;
   created_at: string;
   // Joined fields
   registrazione_info?: StatoGenerale;
-  tipo_incarico_info?: TipoIncarico;
 }
 
 export interface Rubrica {
   id: number;
   nominativo: string;
-  tipologia?: number;
   telefono?: string;
   email?: string;
-  ufficio?: string;
-  tipologia_id?: number;
-  appartenenza_id?: number;
+  riferimento?: string;
   disattivato: boolean;
   created_at: string;
   updated_at: string;
-  // Joined fields
-  tipologia_info?: TipologiaContatto;
-  appartenenza_info?: TipologiaAppartenenza;
 }
 
 export interface Scadenza {
@@ -252,6 +236,8 @@ export interface AuthUser {
   id: string;
   email?: string;
   username?: string;
+  name?: string;
+  surname?: string;
 }
 
 export interface AuthState {
