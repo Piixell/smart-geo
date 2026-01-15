@@ -514,7 +514,7 @@ export const FattureNonContabilizzate: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600 dark:text-green-400">
                       {formatCurrency(fattura.totale)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600 dark:text-red-400">
                       {formatCurrency(fattura.spese)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600 dark:text-blue-400">
@@ -556,7 +556,7 @@ export const FattureNonContabilizzate: React.FC = () => {
                   <td className="px-6 py-4 text-sm font-bold text-green-700 dark:text-green-400">
                     {formatCurrency(totals.totale)}
                   </td>
-                  <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-gray-100">
+                  <td className="px-6 py-4 text-sm font-bold text-red-700 dark:text-red-400">
                     {formatCurrency(totals.spese)}
                   </td>
                   <td className="px-6 py-4 text-sm font-bold text-blue-700 dark:text-blue-400">
