@@ -159,7 +159,7 @@ export const VariePage: React.FC = () => {
           registrazione_info:stati_generali(id, descrizione, colore)
         `)
         .eq('user_id', user?.id)
-        .order('created_at', { ascending: false });
+        .order('registrazione', { ascending: true });
 
       // Applica filtri
       if (currentSearchTerm) {
