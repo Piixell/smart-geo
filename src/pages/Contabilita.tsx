@@ -9,7 +9,7 @@ export const Contabilita: React.FC = () => {
   const [fatture, setFatture] = useState<Fattura[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroMese, setFiltroMese] = useState('');
-  const [filtroAnno, setFiltroAnno] = useState('');
+  const [filtroAnno, setFiltroAnno] = useState(() => new Date().getFullYear().toString());
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -46,7 +46,8 @@ export const Contabilita: React.FC = () => {
     cassaGeometri: 0,
     tasse: 0,
     fatturato: 0,
-    guadagnoNetto: 0
+    guadagnoNetto: 0,
+    fatturaPerDetrazione: false
   });
   const [parametroTasse, setParametroTasse] = useState<number>(0.22); // Default 22%
 
@@ -124,10 +125,18 @@ export const Contabilita: React.FC = () => {
         return;
       }
 
-      // Ordina per anno desc, poi per numero_fattura desc (numericamente)
+      // Ordina per anno desc, mese desc, numero_fattura desc
+      const meseOrder: Record<string, number> = {
+        'Gennaio': 1, 'Febbraio': 2, 'Marzo': 3, 'Aprile': 4,
+        'Maggio': 5, 'Giugno': 6, 'Luglio': 7, 'Agosto': 8,
+        'Settembre': 9, 'Ottobre': 10, 'Novembre': 11, 'Dicembre': 12
+      };
       const sortedData = (data || []).sort((a, b) => {
         const annoDiff = (b.anno_fattura || 0) - (a.anno_fattura || 0);
         if (annoDiff !== 0) return annoDiff;
+        
+        const meseDiff = (meseOrder[b.mese_fattura] || 0) - (meseOrder[a.mese_fattura] || 0);
+        if (meseDiff !== 0) return meseDiff;
         
         const numA = parseInt(a.numero_fattura) || 0;
         const numB = parseInt(b.numero_fattura) || 0;
@@ -311,8 +320,12 @@ export const Contabilita: React.FC = () => {
   const calculateValues = (onorario: number | string, spese: number | string) => {
     const onorarioNum = parseFloat(onorario as string) || 0;
     const speseNum = parseFloat(spese as string) || 0;
-    const bolli = 2.00;
     const cassaGeometri = onorarioNum * 0.05; // 5% dell'onorario
+    
+    // Bolli: 2€ solo se fatturato > 77,47€
+    const fatturatoBase = onorarioNum + speseNum + cassaGeometri;
+    const bolli = fatturatoBase > 77.47 ? 2.00 : 0;
+    
     const tasse = (onorarioNum + bolli) * 0.78 * parametroTasse;
     const fatturato = onorarioNum + speseNum + bolli + cassaGeometri;
     const guadagnoNetto = fatturato - tasse - cassaGeometri - bolli - speseNum;
@@ -330,8 +343,12 @@ export const Contabilita: React.FC = () => {
   const calculateValuesWithPercent = (onorario: number | string, spese: number | string, percentuale: number) => {
     const onorarioNum = parseFloat(onorario as string) || 0;
     const speseNum = parseFloat(spese as string) || 0;
-    const bolli = 2.00;
     const cassaGeometri = onorarioNum * 0.05; // 5% dell'onorario
+    
+    // Bolli: 2€ solo se fatturato > 77,47€
+    const fatturatoBase = onorarioNum + speseNum + cassaGeometri;
+    const bolli = fatturatoBase > 77.47 ? 2.00 : 0;
+    
     const tasse = (onorarioNum + bolli) * 0.78 * percentuale;
     const fatturato = onorarioNum + speseNum + bolli + cassaGeometri;
     const guadagnoNetto = fatturato - tasse - cassaGeometri - bolli - speseNum;
@@ -374,11 +391,12 @@ export const Contabilita: React.FC = () => {
       numeroFattura: '',
       onorario: '',
       spese: '',
-      bolli: 2.00,
+      bolli: 0,
       cassaGeometri: 0,
       tasse: 0,
       fatturato: 0,
-      guadagnoNetto: 0
+      guadagnoNetto: 0,
+      fatturaPerDetrazione: false
     });
     setEditingId(null);
     await loadParametriTasse();
@@ -396,7 +414,8 @@ export const Contabilita: React.FC = () => {
       cassaGeometri: fattura.cassa_geometri,
       tasse: fattura.tasse,
       fatturato: fattura.fatturato,
-      guadagnoNetto: fattura.guadagno_netto
+      guadagnoNetto: fattura.guadagno_netto,
+      fatturaPerDetrazione: fattura.fattura_per_detrazione ?? false
     });
     setEditingId(fattura.id);
     await loadParametriTasse();
@@ -449,6 +468,7 @@ export const Contabilita: React.FC = () => {
             tasse: formData.tasse,
             fatturato: formData.fatturato,
             guadagno_netto: formData.guadagnoNetto,
+            fattura_per_detrazione: formData.fatturaPerDetrazione,
             data_modifica: new Date().toISOString()
           })
           .eq('id', editingId)
@@ -478,6 +498,7 @@ export const Contabilita: React.FC = () => {
             tasse: formData.tasse,
             fatturato: formData.fatturato,
             guadagno_netto: formData.guadagnoNetto,
+            fattura_per_detrazione: formData.fatturaPerDetrazione,
             data_creazione: new Date().toISOString(),
             data_modifica: new Date().toISOString()
           });
@@ -686,10 +707,10 @@ export const Contabilita: React.FC = () => {
                   Spese (€)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Bolli (€)
+                  Cassa Geometri (€)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Cassa Geometri (€)
+                  Bolli (€)
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Tasse (€)
@@ -722,58 +743,142 @@ export const Contabilita: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                fatture.map((fattura) => (
-                  <tr key={fattura.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                      {fattura.mese_fattura}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                      {fattura.anno_fattura}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {fattura.numero_fattura}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                      {formatCurrency(fattura.onorario)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                      {formatCurrency(fattura.spese)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                      {formatCurrency(fattura.bolli)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                      {formatCurrency(fattura.cassa_geometri)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                      {formatCurrency(fattura.tasse)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600 dark:text-green-400">
-                      {formatCurrency(fattura.fatturato)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600 dark:text-blue-400">
-                      {formatCurrency(fattura.guadagno_netto)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEditFattura(fattura)}
-                          className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
-                          title="Modifica"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteFattura(fattura.id)}
-                          className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 transition-colors"
-                          title="Elimina"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                (() => {
+                  // Calcola totali per ogni mese
+                  const monthlyTotals: Record<string, { onorario: number; spese: number; cassaGeometri: number; bolli: number; tasse: number; fatturato: number; guadagnoNetto: number; count: number }> = {};
+                  fatture.forEach(f => {
+                    const key = `${f.mese_fattura}-${f.anno_fattura}`;
+                    if (!monthlyTotals[key]) {
+                      monthlyTotals[key] = { onorario: 0, spese: 0, cassaGeometri: 0, bolli: 0, tasse: 0, fatturato: 0, guadagnoNetto: 0, count: 0 };
+                    }
+                    const t = monthlyTotals[key];
+                    t.onorario += f.onorario || 0;
+                    t.spese += f.spese || 0;
+                    t.cassaGeometri += f.cassa_geometri;
+                    t.bolli += f.bolli;
+                    t.tasse += f.tasse;
+                    t.fatturato += f.fatturato;
+                    t.guadagnoNetto += f.guadagno_netto;
+                    t.count++;
+                  });
+
+                  // Costruisci le righe con separatori e totali mensili
+                  const rows: React.ReactNode[] = [];
+                  fatture.forEach((fattura, index) => {
+                    const prevFattura = index > 0 ? fatture[index - 1] : null;
+                    const showSeparator = prevFattura && 
+                      (prevFattura.mese_fattura !== fattura.mese_fattura || prevFattura.anno_fattura !== fattura.anno_fattura);
+
+                    const nextFattura = index < fatture.length - 1 ? fatture[index + 1] : null;
+                    const isLastInMonth = !nextFattura || 
+                      nextFattura.mese_fattura !== fattura.mese_fattura || 
+                      nextFattura.anno_fattura !== fattura.anno_fattura;
+
+                    const monthKey = `${fattura.mese_fattura}-${fattura.anno_fattura}`;
+                    const mTotals = monthlyTotals[monthKey];
+
+                    rows.push(
+                      <React.Fragment key={fattura.id}>
+                        {showSeparator && (
+                          <tr className="bg-gray-100 dark:bg-gray-700/50">
+                            <td colSpan={11} className="px-6 py-2">
+                              <div className="border-t border-gray-300 dark:border-gray-600"></div>
+                            </td>
+                          </tr>
+                        )}
+                        <tr className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${fattura.fattura_per_detrazione ? 'bg-red-50 dark:bg-red-900/20' : (index % 2 === 0 ? '' : 'bg-gray-50 dark:bg-gray-700/50')}`}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {fattura.mese_fattura}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {fattura.anno_fattura}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {fattura.numero_fattura}
+                            {fattura.fattura_per_detrazione && (
+                              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">
+                                Detrazione
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {formatCurrency(fattura.onorario)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {formatCurrency(fattura.spese)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {formatCurrency(fattura.cassa_geometri)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {formatCurrency(fattura.bolli)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {formatCurrency(fattura.tasse)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600 dark:text-blue-400">
+                            {formatCurrency(fattura.fatturato)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600 dark:text-green-400">
+                            {formatCurrency(fattura.guadagno_netto)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleEditFattura(fattura)}
+                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
+                                title="Modifica"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteFattura(fattura.id)}
+                                className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 transition-colors"
+                                title="Elimina"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {/* Riga totali mensili */}
+                        {isLastInMonth && (
+                          <tr className="bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-800">
+                            <td className="px-6 py-3 text-sm font-bold text-blue-800 dark:text-blue-300" colSpan={2}>
+                              Totale {fattura.mese_fattura} {fattura.anno_fattura}
+                            </td>
+                            <td className="px-6 py-3 text-xs text-blue-600 dark:text-blue-400">
+                              {mTotals.count} {mTotals.count === 1 ? 'fattura' : 'fatture'}
+                            </td>
+                            <td className="px-6 py-3 text-sm font-bold text-blue-800 dark:text-blue-300">
+                              {formatCurrency(mTotals.onorario)}
+                            </td>
+                            <td className="px-6 py-3 text-sm font-bold text-blue-800 dark:text-blue-300">
+                              {formatCurrency(mTotals.spese)}
+                            </td>
+                            <td className="px-6 py-3 text-sm font-bold text-blue-800 dark:text-blue-300">
+                              {formatCurrency(mTotals.cassaGeometri)}
+                            </td>
+                            <td className="px-6 py-3 text-sm font-bold text-blue-800 dark:text-blue-300">
+                              {formatCurrency(mTotals.bolli)}
+                            </td>
+                            <td className="px-6 py-3 text-sm font-bold text-blue-700 dark:text-blue-400">
+                              {formatCurrency(mTotals.tasse)}
+                            </td>
+                            <td className="px-6 py-3 text-sm font-bold text-blue-700 dark:text-blue-400">
+                              {formatCurrency(mTotals.fatturato)}
+                            </td>
+                            <td className="px-6 py-3 text-sm font-bold text-green-700 dark:text-green-400">
+                              {formatCurrency(mTotals.guadagnoNetto)}
+                            </td>
+                            <td className="px-6 py-3"></td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  });
+                  return rows;
+                })()
               )}
             </tbody>
             {/* Totalizzatore */}
@@ -792,18 +897,18 @@ export const Contabilita: React.FC = () => {
                     {formatCurrency(totals.spese)}
                   </td>
                   <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-gray-100">
-                    {formatCurrency(totals.bolli)}
+                    {formatCurrency(totals.cassaGeometri)}
                   </td>
                   <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-gray-100">
-                    {formatCurrency(totals.cassaGeometri)}
+                    {formatCurrency(totals.bolli)}
                   </td>
                   <td className="px-6 py-4 text-sm font-bold text-red-700 dark:text-red-400">
                     {formatCurrency(totals.tasse)}
                   </td>
-                  <td className="px-6 py-4 text-sm font-bold text-green-700 dark:text-green-400">
+                  <td className="px-6 py-4 text-sm font-bold text-blue-700 dark:text-blue-400">
                     {formatCurrency(totals.fatturato)}
                   </td>
-                  <td className="px-6 py-4 text-sm font-bold text-blue-700 dark:text-blue-400">
+                  <td className="px-6 py-4 text-sm font-bold text-green-700 dark:text-green-400">
                     {formatCurrency(totals.guadagnoNetto)}
                   </td>
                   <td className="px-6 py-4"></td>
@@ -913,21 +1018,6 @@ export const Contabilita: React.FC = () => {
                   />
                 </div>
 
-                {/* Bolli */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Bolli (€)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.bolli}
-                    className="input bg-gray-50 dark:bg-gray-600 dark:border-gray-600 dark:text-white"
-                    readOnly
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">2,00€ fissi</p>
-                </div>
-
                 {/* Cassa Geometri */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -941,6 +1031,21 @@ export const Contabilita: React.FC = () => {
                     readOnly
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">5% dell'onorario</p>
+                </div>
+
+                {/* Bolli */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Bolli (€)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.bolli.toFixed(2)}
+                    className="input bg-gray-50 dark:bg-gray-600 dark:border-gray-600 dark:text-white"
+                    readOnly
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">2,00€ se fatturato {'>'} 77,47€</p>
                 </div>
 
                 {/* Tasse */}
@@ -988,6 +1093,20 @@ export const Contabilita: React.FC = () => {
                     readOnly
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Fatturato - tasse - cassa - bolli - spese</p>
+                </div>
+
+                {/* Fattura per detrazione */}
+                <div className="flex items-center gap-3 md:col-span-2">
+                  <input
+                    type="checkbox"
+                    id="fatturaPerDetrazione"
+                    checked={formData.fatturaPerDetrazione}
+                    onChange={(e) => handleFormChange('fatturaPerDetrazione', e.target.checked)}
+                    className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 rounded focus:ring-red-500 dark:focus:ring-red-600 dark:ring-offset-gray-800 dark:bg-gray-700 dark:border-gray-600"
+                  />
+                  <label htmlFor="fatturaPerDetrazione" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Fattura per detrazione
+                  </label>
                 </div>
               </div>
             </div>

@@ -156,6 +156,7 @@ export interface Fattura {
   tasse: number;
   fatturato: number;
   guadagno_netto: number;
+  fattura_per_detrazione: boolean;
   data_creazione: string;
   data_modifica: string;
 }
