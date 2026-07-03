@@ -44,7 +44,7 @@ export const Spese: React.FC = () => {
 
       // Filtro solo non pagate
       if (filtriAttivi.nonPagate) {
-        query = query.eq('pagamento', false);
+        query = query.eq('pagamento', false).neq('stato_id', 1);
       }
 
       // Filtro solo pronte da pagare

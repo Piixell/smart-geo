@@ -233,11 +233,11 @@ export const ComuneCatastoPage: React.FC = () => {
       }
 
       if (currentFiltriAttivi.nonPagati) {
-        countQuery = countQuery.eq('pagamento', false);
+        countQuery = countQuery.eq('pagamento', false).neq('stato', 1);
       }
 
       if (currentFiltriAttivi.completateNonPagate) {
-        countQuery = countQuery.eq('fine_lavori', true).eq('pagamento', false);
+        countQuery = countQuery.eq('fine_lavori', true).eq('pagamento', false).neq('stato', 1);
       }
 
       const { count, error: countError } = await countQuery;
@@ -291,7 +291,7 @@ export const ComuneCatastoPage: React.FC = () => {
       }
 
       if (currentFiltriAttivi.nonPagati) {
-        query = query.eq('pagamento', false);
+        query = query.eq('pagamento', false).neq('stato', 1);
       }
 
       if (currentFiltriAttivi.completateNonPagate) {

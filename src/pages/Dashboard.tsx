@@ -115,20 +115,23 @@ export const Dashboard: React.FC = () => {
         supabase
           .from('comune_catasto')
           .select('id')
-          .eq('pagamento', 0),
+          .eq('pagamento', 0)
+          .neq('stato', 1),
 
         // APE non pagate: pagamento = 0
         supabase
           .from('ape')
           .select('id')
-          .eq('pagamento', 0),
+          .eq('pagamento', 0)
+          .neq('registrazione', 1),
 
         // Varie non pagate: pagamento = 0, escludi omaggio
         supabase
           .from('varie')
           .select('id')
           .eq('pagamento', 0)
-          .eq('omaggio', false),
+          .eq('omaggio', false)
+          .neq('registrazione', 1),
 
         // Spese imminenti: scadenza entro 30 giorni o senza data e non pagate
         (() => {

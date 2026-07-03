@@ -538,7 +538,7 @@ export const ApePage: React.FC = () => {
       }
 
       if (currentFiltriAttivi.soloNonPagate) {
-        countQuery = countQuery.eq('pagamento', false);
+        countQuery = countQuery.eq('pagamento', false).neq('registrazione', 1);
       }
 
       const { count, error: countError } = await countQuery;
@@ -581,7 +581,7 @@ export const ApePage: React.FC = () => {
       }
 
       if (currentFiltriAttivi.soloNonPagate) {
-        query = query.eq('pagamento', false);
+        query = query.eq('pagamento', false).neq('registrazione', 1);
       }
 
       // Applica paginazione

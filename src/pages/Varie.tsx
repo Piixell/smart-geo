@@ -160,7 +160,7 @@ export const VariePage: React.FC = () => {
       }
 
       if (currentFiltriAttivi.nonPagati) {
-        countQuery = countQuery.eq('pagamento', 0);
+        countQuery = countQuery.eq('pagamento', 0).neq('registrazione', 1);
       }
 
       const { count, error: countError } = await countQuery;
@@ -195,7 +195,7 @@ export const VariePage: React.FC = () => {
       }
 
       if (currentFiltriAttivi.nonPagati) {
-        query = query.eq('pagamento', 0);
+        query = query.eq('pagamento', 0).neq('registrazione', 1);
       }
 
       // Applica paginazione

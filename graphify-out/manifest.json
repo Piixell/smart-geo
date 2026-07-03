@@ -1,0 +1,162 @@
+{
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\add_telefono2_to_varie.sql": {
+    "mtime": 1763551397.300105,
+    "hash": "4947b70db95986bc8d35ce3a71ee5822"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\add_tipo_pratica.sql": {
+    "mtime": 1783083775.4327078,
+    "hash": "994452a7b238897ceb18654dc921ced4"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\database_setup.sql": {
+    "mtime": 1758754290.0,
+    "hash": "6e76ccd82d80820121ed1692de56c2b7"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\DB_Schema.sql": {
+    "mtime": 1781706732.2806888,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\eslint.config.js": {
+    "mtime": 1757338121.650696,
+    "hash": "a859553e5d59b7217275e3e99daef762"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\postcss.config.js": {
+    "mtime": 1757338121.6546955,
+    "hash": "5b84f4567208c7c747079c0477373231"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\tailwind.config.js": {
+    "mtime": 1757370332.0,
+    "hash": "0f01267f62ffe0422e314f8b02b69f72"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\update_rubrica_schema.sql": {
+    "mtime": 1768475094.8490548,
+    "hash": "692b875546dc2c99c945d1f8a449c51d"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\update_tipo_incarico_field.sql": {
+    "mtime": 1763551522.0022695,
+    "hash": "256b23028a24ec97b185dfda9910a358"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\vite.config.ts": {
+    "mtime": 1757338122.0252476,
+    "hash": "9801ffa2aec9d968dea0e4056106baee"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\App.tsx": {
+    "mtime": 1757338121.6566954,
+    "hash": "abf2b46a82848971464ea4eae99545a3"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\main.tsx": {
+    "mtime": 1757338122.0132477,
+    "hash": "df3369963799e47ef5a77cdca932abf0"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\vite-env.d.ts": {
+    "mtime": 1757338122.0222478,
+    "hash": "8f68c27c3fc38817b2726b20e2d4f1ee"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\components\\RubricaAutocomplete.tsx": {
+    "mtime": 1783004227.4586177,
+    "hash": "aaeea5b5f564d3fd80acc8dd46012418"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\components\\layout\\AppLayout.tsx": {
+    "mtime": 1757371977.0,
+    "hash": "fdda9023f2499be3f6da09efbb9b97a2"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\components\\layout\\Header.tsx": {
+    "mtime": 1757372537.0766277,
+    "hash": "11f23781595faf3912f2214e94bd3458"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\components\\layout\\ProtectedRoute.tsx": {
+    "mtime": 1757338121.6586962,
+    "hash": "3bb3bdc0f04e5c25c4db753db2d9d243"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\components\\layout\\Sidebar.tsx": {
+    "mtime": 1757338121.6586962,
+    "hash": "bad2bbe54a5bd0630fa07e84cff26e49"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\Ape.tsx": {
+    "mtime": 1783005344.0910347,
+    "hash": "2a3f355856100fed9ada3745710712e9"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\ComuneCatasto.tsx": {
+    "mtime": 1783084458.5638356,
+    "hash": "45e8bd9f06fa9db82af564ac5489485b"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\Contabilita.tsx": {
+    "mtime": 1783033348.334557,
+    "hash": "f22e190dd5fa51f5db463080c1598840"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\Dashboard.tsx": {
+    "mtime": 1781708699.2058852,
+    "hash": "429037cb279dc54c5159a1ba1e79f732"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\FattureNonContabilizzate.tsx": {
+    "mtime": 1768473112.0767639,
+    "hash": "8fd34fe565c0376c952929c8a2ab0d28"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\Login.tsx": {
+    "mtime": 1757339638.8498428,
+    "hash": "3fcfa835918d709800c712749ba3ec85"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\Parametri.tsx": {
+    "mtime": 1783084026.4624133,
+    "hash": "cfef27d5c28c26ba3703592e80108265"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\Planner.tsx": {
+    "mtime": 1757338122.0182476,
+    "hash": "e2f817eebc0a42109ced8625a52ed05f"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\Rubrica.tsx": {
+    "mtime": 1768486607.3375869,
+    "hash": "53acacc0870206a88c89d6eda888f7c6"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\Spese.tsx": {
+    "mtime": 1781706732.288452,
+    "hash": "13d114f822e771894306c566bf465330"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\UserSettings.tsx": {
+    "mtime": 1757338122.0192485,
+    "hash": "9af0ecaf865f00235316c469a5300f04"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\pages\\Varie.tsx": {
+    "mtime": 1783025447.9156132,
+    "hash": "e44e3f70c24a2400fee7d5c7bb03e599"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\services\\supabase.ts": {
+    "mtime": 1757338122.020248,
+    "hash": "7708da1ddb7e554016ca8e32571291c0"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\store\\authStore.ts": {
+    "mtime": 1757340105.136678,
+    "hash": "73af0ea2fd31087416c131026ffd7898"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\store\\themeStore.ts": {
+    "mtime": 1757338122.0222478,
+    "hash": "7880dec349421df7b02c0757c3b5956e"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\types\\index.ts": {
+    "mtime": 1783083834.9404812,
+    "hash": "6cea698ee3be4488c40e1bff7aa8bf57"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\utils\\rubricaSync.ts": {
+    "mtime": 1783004192.6628077,
+    "hash": "ece6fe73f2cd8be4abf63ca1c6fd14da"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\index.html": {
+    "mtime": 1757338121.652696,
+    "hash": "7e58d00088110a1316ba44ccbfe25614"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\README.md": {
+    "mtime": 1757338121.6496992,
+    "hash": "885681326c1731944d938880b1b60ff1"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\WARP.md": {
+    "mtime": 1757338121.6496992,
+    "hash": "6538c45180ce82e3c21c859dbafb3bb1"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\public\\vite.svg": {
+    "mtime": 1757338121.655696,
+    "hash": "8e3a10e157f75ada21ab742c022d5430"
+  },
+  "C:\\Users\\Marco\\ownCloud (2)\\Digisolve\\99. Progetti personali\\smart-geo\\smart-geo\\src\\assets\\react.svg": {
+    "mtime": 1757338121.6566954,
+    "hash": "f0402b67b6ce880f65666bb49e841696"
+  }
+}
