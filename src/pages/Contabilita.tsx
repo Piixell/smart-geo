@@ -877,13 +877,13 @@ export const Contabilita: React.FC = () => {
               <td className="px-6 py-3 text-sm font-bold text-ink-900">
                 {formatCurrency(mTotals.bolli)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-red-600 dark:text-red-400">
+              <td className="px-6 py-3 text-sm font-bold text-ink-900">
                 {formatCurrency(mTotals.tasse)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-blue-600 dark:text-blue-400">
+              <td className="px-6 py-3 text-sm font-bold text-ink-900">
                 {formatCurrency(mTotals.fatturato)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-green-600 dark:text-green-400">
+              <td className="px-6 py-3 text-sm font-bold text-ink-900">
                 {formatCurrency(mTotals.guadagnoNetto)}
               </td>
             </tr>
