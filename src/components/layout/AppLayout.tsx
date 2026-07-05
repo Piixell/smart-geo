@@ -1,20 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
-import { CommandPalette } from '../CommandPalette';
 
 export const AppLayout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-
-  const handleSearchClick = useCallback(() => {
-    setCommandPaletteOpen(true);
-  }, []);
-
-  const handleCommandPaletteClose = useCallback(() => {
-    setCommandPaletteOpen(false);
-  }, []);
 
   return (
     <div className="flex h-screen max-h-screen overflow-hidden bg-ink-50">
@@ -26,7 +16,6 @@ export const AppLayout: React.FC = () => {
         {/* Header */}
         <Header 
           onMenuClick={() => setSidebarOpen(true)} 
-          onSearchClick={handleSearchClick}
         />
         
         {/* Page content */}
@@ -36,12 +25,6 @@ export const AppLayout: React.FC = () => {
           </div>
         </main>
       </div>
-
-      {/* Command Palette */}
-      <CommandPalette 
-        isOpen={commandPaletteOpen} 
-        onClose={handleCommandPaletteClose} 
-      />
     </div>
   );
 };

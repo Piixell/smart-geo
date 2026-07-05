@@ -844,16 +844,16 @@ export const Contabilita: React.FC = () => {
  {formatCurrency(fattura.cassa_geometri)}
  </td>
  <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
- {formatCurrency(fattura.bolli)}
- </td>
- <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
- {formatCurrency(fattura.tasse)}
- </td>
- <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-signal-500">
- {formatCurrency(fattura.fatturato)}
- </td>
- <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-topo-600">
- {formatCurrency(fattura.guadagno_netto)}
+{formatCurrency(fattura.bolli)}
+          </td>
+          <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 dark:text-red-400">
+{formatCurrency(fattura.tasse)}
+          </td>
+          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600 dark:text-blue-400">
+{formatCurrency(fattura.fatturato)}
+          </td>
+          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600 dark:text-green-400">
+            {formatCurrency(fattura.guadagno_netto)}
  </td>
  </tr>
 {/* Riga totali mensili */}
@@ -877,13 +877,13 @@ export const Contabilita: React.FC = () => {
               <td className="px-6 py-3 text-sm font-bold text-ink-900">
                 {formatCurrency(mTotals.bolli)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-ink-900">
+              <td className="px-6 py-3 text-sm font-bold text-red-600 dark:text-red-400">
                 {formatCurrency(mTotals.tasse)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-ink-900">
+              <td className="px-6 py-3 text-sm font-bold text-blue-600 dark:text-blue-400">
                 {formatCurrency(mTotals.fatturato)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-ink-900">
+              <td className="px-6 py-3 text-sm font-bold text-green-600 dark:text-green-400">
                 {formatCurrency(mTotals.guadagnoNetto)}
               </td>
             </tr>
@@ -916,14 +916,14 @@ export const Contabilita: React.FC = () => {
  <td className="px-6 py-4 text-sm font-bold text-ink-900">
  {formatCurrency(totals.bolli)}
  </td>
- <td className="px-6 py-4 text-sm font-bold text-red-700">
- {formatCurrency(totals.tasse)}
+<td className="px-6 py-4 text-sm font-bold text-red-700 dark:text-red-400">
+              {formatCurrency(totals.tasse)}
  </td>
- <td className="px-6 py-4 text-sm font-bold text-signal-600">
- {formatCurrency(totals.fatturato)}
+<td className="px-6 py-4 text-sm font-bold text-blue-700 dark:text-blue-400">
+              {formatCurrency(totals.fatturato)}
  </td>
- <td className="px-6 py-4 text-sm font-bold text-green-700">
- {formatCurrency(totals.guadagnoNetto)}
+<td className="px-6 py-4 text-sm font-bold text-green-700 dark:text-green-400">
+              {formatCurrency(totals.guadagnoNetto)}
  </td>
  </tr>
  </tfoot>
@@ -1087,7 +1087,7 @@ export const Contabilita: React.FC = () => {
  type="number"
  step="0.01"
  value={formData.fatturato.toFixed(2)}
- className="input bg-green-50 font-semibold text-green-700"
+ className="input bg-blue-50 font-semibold text-blue-700"
  readOnly
  />
  <p className="text-xs text-ink-500 mt-1">Onorario + spese + bolli + cassa</p>
@@ -1102,7 +1102,7 @@ export const Contabilita: React.FC = () => {
  type="number"
  step="0.01"
  value={formData.guadagnoNetto.toFixed(2)}
- className="input bg-signal-50 font-semibold text-signal-600"
+ className="input bg-green-50 font-semibold text-green-700"
  readOnly
  />
  <p className="text-xs text-ink-500 mt-1">Fatturato - tasse - cassa - bolli - spese</p>
