@@ -835,7 +835,7 @@ export const Parametri: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="flex flex-col gap-8">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Parametri</h1>

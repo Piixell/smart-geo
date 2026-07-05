@@ -79,6 +79,9 @@ export interface ComuneCatasto {
   fine_lavori: boolean;
   stato?: number;
   pagamento: boolean;
+  acconto: boolean;
+  saldo: boolean;
+  omaggio: boolean;
   tipo_incarico?: number;
   tipo_pratica?: number;
   created_at: string;
@@ -124,6 +127,7 @@ export interface Varie {
   tipo_incarico?: string;
   pagamento: boolean;
   acconto: boolean;
+  saldo: boolean;
   omaggio: boolean;
   created_at: string;
   // Joined fields

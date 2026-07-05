@@ -1,212 +1,492 @@
+@import './design-tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-  }
+/* DARK MODE GLOBAL OVERRIDE
+   Tailwind compila bg-ink-50 in un valore statico (es. #FAFAF9).
+   Questi override forzano ogni utility ink, signal, topo a usare la CSS variable,
+   che nel blocco .dark di design-tokens.css e invertita.
+   Garantisce dark mode automatica su tutti i componenti senza dark: inline. */
+.dark, .dark body {
+  background-color: var(--ink-50) !important;
+  color: var(--ink-700) !important;
 }
+
+/* === Background overrides === */
+.dark .bg-white { background-color: var(--ink-100) !important; }
+.dark .bg-ink-50 { background-color: var(--ink-50) !important; }
+.dark .bg-ink-100 { background-color: var(--ink-100) !important; }
+.dark .bg-ink-200 { background-color: var(--ink-200) !important; }
+.dark .bg-ink-300 { background-color: var(--ink-300) !important; }
+.dark .bg-ink-400 { background-color: var(--ink-400) !important; }
+.dark .bg-ink-500 { background-color: var(--ink-500) !important; }
+.dark .bg-ink-600 { background-color: var(--ink-600) !important; }
+.dark .bg-ink-700 { background-color: var(--ink-700) !important; }
+.dark .bg-ink-800 { background-color: var(--ink-800) !important; }
+.dark .bg-ink-900 { background-color: var(--ink-900) !important; }
+
+.dark .bg-gray-50,
+.dark .bg-gray-100 { background-color: var(--ink-100) !important; }
+.dark .bg-gray-200 { background-color: var(--ink-200) !important; }
+.dark .bg-gray-300 { background-color: var(--ink-300) !important; }
+.dark .bg-gray-700 { background-color: var(--ink-800) !important; }
+.dark .bg-gray-800 { background-color: var(--ink-800) !important; }
+.dark .bg-gray-900 { background-color: var(--ink-900) !important; }
+
+/* Badge bg in dark mode */
+.dark .bg-signal-50 { background-color: var(--signal-50) !important; }
+.dark .bg-signal-100 { background-color: var(--signal-100) !important; }
+.dark .bg-signal-200 { background-color: var(--signal-200) !important; }
+.dark .bg-topo-50 { background-color: var(--topo-50) !important; }
+.dark .bg-topo-100 { background-color: var(--topo-100) !important; }
+.dark .bg-success-50 { background-color: var(--success-50) !important; }
+.dark .bg-error-50 { background-color: var(--error-50) !important; }
+.dark .bg-warning-50 { background-color: var(--warning-50) !important; }
+.dark .bg-info-50 { background-color: var(--info-50) !important; }
+
+/* === Text color overrides ===
+   In dark mode, ink-50..400 are DARK (bg/border colors) and ink-500..700 are LIGHT (text colors).
+   ink-800/900 are BLACK (sidebar chrome). So text-ink-900 and text-ink-800 would be invisible.
+   We MAP text-ink-* to the INVERTED counterpart: 900→700, 800→700, 300→500, etc. */
+.dark .text-ink-50 { color: var(--ink-700) !important; }
+.dark .text-ink-100 { color: var(--ink-600) !important; }
+.dark .text-ink-200 { color: var(--ink-500) !important; }
+.dark .text-ink-300 { color: var(--ink-500) !important; }
+.dark .text-ink-400 { color: var(--ink-400) !important; }
+.dark .text-ink-500 { color: var(--ink-500) !important; }
+.dark .text-ink-600 { color: var(--ink-600) !important; }
+.dark .text-ink-700 { color: var(--ink-700) !important; }
+.dark .text-ink-800 { color: var(--ink-700) !important; }
+.dark .text-ink-900 { color: var(--ink-700) !important; }
+
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-gray-700 { color: var(--ink-700) !important; }
+.dark .text-gray-600 { color: var(--ink-600) !important; }
+.dark .text-gray-500 { color: var(--ink-500) !important; }
+.dark .text-gray-400 { color: var(--ink-400) !important; }
+.dark .text-gray-300 { color: var(--ink-500) !important; }
+
+/* Remaining hardcoded colors in Contabilita/Ape */
+.dark .text-blue-800,
+.dark .text-blue-700 { color: var(--signal-400) !important; }
+.dark .text-blue-300 { color: var(--signal-300) !important; }
+.dark .text-green-700 { color: var(--topo-400) !important; }
+.dark .text-green-600 { color: var(--topo-400) !important; }
+.dark .text-red-700,
+.dark .text-red-800 { color: var(--error-500) !important; }
+.dark .text-red-600 { color: var(--error-500) !important; }
+.dark .bg-red-50 { background-color: var(--error-50) !important; }
+.dark .bg-red-100 { background-color: var(--error-50) !important; }
+.dark .bg-green-50 { background-color: var(--topo-50) !important; }
+.dark .border-blue-200,
+.dark .border-blue-800 { border-color: var(--ink-200) !important; }
+
+/* === Border color overrides === */
+.dark .border-ink-50 { border-color: var(--ink-50) !important; }
+.dark .border-ink-100 { border-color: var(--ink-100) !important; }
+.dark .border-ink-200 { border-color: var(--ink-200) !important; }
+.dark .border-ink-300 { border-color: var(--ink-300) !important; }
+.dark .border-ink-400 { border-color: var(--ink-400) !important; }
+.dark .border-ink-500 { border-color: var(--ink-500) !important; }
+.dark .border-ink-600 { border-color: var(--ink-600) !important; }
+.dark .border-ink-700 { border-color: var(--ink-700) !important; }
+.dark .border-ink-800 { border-color: var(--ink-800) !important; }
+.dark .border-ink-900 { border-color: var(--ink-900) !important; }
+
+.dark .border-gray-200,
+.dark .border-gray-300 { border-color: var(--ink-200) !important; }
+.dark .border-gray-400 { border-color: var(--ink-300) !important; }
+.dark .border-gray-600 { border-color: var(--ink-600) !important; }
+.dark .border-gray-700 { border-color: var(--ink-700) !important; }
+
+/* === Hover background overrides === */
+.dark .hover\:bg-ink-50:hover { background-color: var(--ink-50) !important; }
+.dark .hover\:bg-ink-100:hover { background-color: var(--ink-100) !important; }
+.dark .hover\:bg-ink-200:hover { background-color: var(--ink-200) !important; }
+.dark .hover\:bg-ink-300:hover { background-color: var(--ink-300) !important; }
+
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-gray-100:hover { background-color: var(--ink-200) !important; }
+.dark .hover\:bg-gray-200:hover { background-color: var(--ink-300) !important; }
+.dark .hover\:bg-gray-700:hover { background-color: var(--ink-800) !important; }
+
+/* === Component class overrides (component classes use @apply which compiles static) === */
+.dark .card,
+.dark .card-flush,
+.dark .modal,
+.dark .toast,
+.dark .context-menu,
+.dark .command-palette-content,
+.dark .command-palette-input,
+.dark .modal-header,
+.dark .modal-body,
+.dark .modal-footer,
+.dark .kpi-card {
+  background-color: var(--ink-100) !important;
+  border-color: var(--ink-200) !important;
+  color: var(--ink-700) !important;
+}
+.dark .table-header {
+  background-color: var(--ink-100) !important;
+  color: var(--ink-500) !important;
+}
+.dark .table-row {
+  border-color: var(--ink-200) !important;
+}
+.dark .table-row:hover {
+  background-color: var(--ink-200) !important;
+}
+.dark .context-menu-item:hover {
+  background-color: var(--ink-200) !important;
+}
+.dark .command-palette-item:hover {
+  background-color: var(--ink-200) !important;
+}
+.dark .command-palette-item-selected {
+  background-color: var(--signal-50) !important;
+  color: var(--signal-300) !important;
+}
+
+/* === Form elements === */
+.dark input, .dark select, .dark textarea {
+  background-color: var(--ink-100) !important;
+  color: var(--ink-700) !important;
+  border-color: var(--ink-300) !important;
+}
+.dark input::placeholder, .dark select::placeholder, .dark textarea::placeholder {
+  color: var(--ink-400) !important;
+}
+.dark input:focus, .dark select:focus, .dark textarea:focus {
+  border-color: var(--signal-500) !important;
+}
+
+/* === Table overrides === */
+.dark table { color: var(--ink-700) !important; }
+.dark th, .dark td {
+  color: inherit !important;
+  border-color: var(--ink-200) !important;
+}
+.dark thead { background-color: var(--ink-100) !important; }
 
 @layer base {
   * {
-    @apply border-gray-200;
+    @apply border-ink-200;
   }
   
   body {
-    @apply bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-    overflow: hidden; /* Previene scroll globale solo sul body */
+    @apply bg-ink-50 text-ink-700;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overflow: hidden;
+  }
+
+  /* Scrollbar dark mode */
+  .dark ::-webkit-scrollbar-track {
+    background: var(--ink-100);
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: var(--ink-300);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-400);
   }
 }
 
 @layer components {
+  /* Button Styles */
   .btn {
-    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none;
   }
   
   .btn-primary {
-    @apply bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 px-4 py-2;
+    @apply bg-signal-500 text-white hover:bg-signal-600 active:bg-signal-700 active:translate-y-0.5 px-4 py-2;
   }
   
   .btn-secondary {
-    @apply bg-gray-100 text-gray-900 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600 px-4 py-2;
+    @apply bg-topo-500 text-white hover:bg-topo-600 active:bg-topo-700 active:translate-y-0.5 px-4 py-2;
   }
   
   .btn-outline {
-    @apply border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 px-4 py-2;
+    @apply border border-ink-300 bg-white text-ink-600 hover:bg-ink-50 active:bg-ink-100 active:translate-y-0.5 px-4 py-2;
   }
   
+  .btn-ghost {
+    @apply bg-transparent text-ink-600 hover:bg-ink-100 active:bg-ink-200 active:translate-y-0.5 px-4 py-2;
+  }
+  
+  .btn-danger {
+    @apply bg-error-500 text-white hover:bg-error-600 active:translate-y-0.5 px-4 py-2;
+  }
+
+  /* Card Styles */
   .card {
-    @apply rounded-lg border border-gray-200 bg-white shadow-sm p-6 dark:border-gray-700 dark:bg-gray-800;
+    @apply rounded-lg border border-ink-200 bg-white shadow-sm p-4 transition-all duration-150;
   }
   
+  .card-hover {
+    @apply hover:shadow-md hover:-translate-y-0.5 cursor-pointer;
+  }
+  
+  .card-accent {
+    @apply card border-t-2 border-t-signal-500;
+  }
+  
+  .card-flush {
+    @apply rounded-lg border border-ink-200 bg-white shadow-sm p-0;
+  }
+
+  /* Input Styles */
   .input {
-    @apply flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400;
+    @apply flex h-10 w-full rounded-md border border-ink-300 bg-white px-3 py-2 text-sm text-ink-700 placeholder:text-ink-400 transition-all duration-150 focus-visible:outline-none focus-visible:border-signal-500 focus-visible:ring-2 focus-visible:ring-signal-500/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-ink-100;
   }
   
+  .input-error {
+    @apply border-error-500 focus-visible:border-error-500 focus-visible:ring-error-500/20;
+  }
+  
+  .input-mono {
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* Sidebar Styles */
   .sidebar-item {
-    @apply flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 rounded-lg transition-colors hover:bg-gray-700 hover:text-white;
+    @apply flex items-center gap-3 px-3 py-2 text-sm font-medium text-ink-300 rounded-md transition-all duration-150 hover:bg-ink-700/50 hover:text-white;
   }
   
   .sidebar-item-active {
-    @apply bg-blue-600 text-white;
+    @apply bg-white/5 text-white border-l-2 border-signal-500;
   }
-}
 
-/* Scrollbar personalizzata */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-}
-
-/* Animazioni personalizzate */
-.fade-in {
-  animation: fadeIn 0.15s ease-out;
-}
-
-.slide-in-right {
-  animation: slideInRight 0.2s ease-out;
-}
-
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
+  /* Badge Styles */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
   }
-  to {
-    transform: translateX(0);
-    opacity: 1;
+  
+  .badge-neutral {
+    @apply bg-ink-100 text-ink-600;
   }
-}
+  
+  .badge-signal {
+    @apply bg-signal-100 text-signal-700;
+  }
+  
+  .badge-success {
+    @apply bg-topo-100 text-topo-700;
+  }
+  
+  .badge-warning {
+    @apply bg-warning-50 text-warning-600;
+  }
+  
+  .badge-danger {
+    @apply bg-error-50 text-error-600;
+  }
 
-.modal-overlay {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  z-index: 40 !important;
-  background-color: rgba(0, 0, 0, 0.3) !important;
-  backdrop-filter: blur(4px) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin: 0 !important;
-  padding: 16px !important;
-  overflow: hidden !important;
-}
+  /* Table Styles */
+  .table {
+    @apply w-full text-sm;
+  }
+  
+  .table-header {
+    @apply sticky top-0 bg-ink-100 text-ink-500 text-xs uppercase tracking-wider;
+  }
+  
+  .table-row {
+    @apply border-b border-ink-200 hover:bg-ink-50 transition-colors;
+  }
+  
+  .table-cell {
+    @apply px-4 py-3 text-left;
+  }
 
-/* Drag & Drop styles */
-.dragging {
-  opacity: 0.5;
-  transform: rotate(2deg) scale(1.05);
-  z-index: 1000;
-}
+  /* Modal Styles */
+  .modal-overlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/45 backdrop-blur-sm;
+  }
+  
+  .modal {
+    @apply bg-white rounded-lg shadow-xl border border-ink-200 animate-scale-in;
+  }
+  
+  .modal-header {
+    @apply flex items-center justify-between px-6 py-4 border-b border-ink-200;
+  }
+  
+  .modal-body {
+    @apply px-6 py-4;
+  }
+  
+  .modal-footer {
+    @apply flex items-center justify-end gap-3 px-6 py-4 border-t border-ink-200;
+  }
 
-.drop-zone {
-  transition: all 0.2s ease;
-}
+  /* Toast Styles */
+  .toast {
+    @apply flex items-center gap-3 px-4 py-3 bg-white rounded-lg shadow-lg border border-ink-200 min-w-[300px] max-w-[400px];
+  }
+  
+  .toast-success {
+    @apply border-l-4 border-l-topo-500;
+  }
+  
+  .toast-error {
+    @apply border-l-4 border-l-error-500;
+  }
+  
+  .toast-warning {
+    @apply border-l-4 border-l-warning-500;
+  }
+  
+  .toast-info {
+    @apply border-l-4 border-l-info-500;
+  }
 
-.drop-zone.drag-over {
-  background-color: rgba(59, 130, 246, 0.1);
-  border-color: #3b82f6;
-}
+  /* Context Menu */
+  .context-menu {
+    @apply bg-white rounded-lg shadow-lg border border-ink-200 py-1 min-w-[180px] max-w-[240px];
+  }
+  
+  .context-menu-item {
+    @apply w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-600 hover:bg-ink-100 transition-colors cursor-pointer;
+  }
+  
+  .context-menu-danger {
+    @apply text-error-500 hover:bg-error-50;
+  }
+  
+  .context-menu-separator {
+    @apply border-t border-ink-200 my-1;
+  }
 
-/* Toaster customization */
-.Toaster {
-  --toast-background: white;
-  --toast-foreground: #1f2937;
-  --toast-border: #e5e7eb;
-}
+  /* Command Palette */
+  .command-palette {
+    @apply fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-ink-900/60 backdrop-blur-sm;
+  }
+  
+  .command-palette-content {
+    @apply w-full max-w-[600px] bg-white rounded-xl shadow-xl border border-ink-200 overflow-hidden animate-scale-in;
+  }
+  
+  .command-palette-input {
+    @apply w-full px-4 py-4 text-lg border-b border-ink-200 focus:outline-none;
+  }
+  
+  .command-palette-group {
+    @apply py-2;
+  }
+  
+  .command-palette-label {
+    @apply px-4 py-1 text-xs font-medium text-ink-500 uppercase tracking-wider;
+  }
+  
+  .command-palette-item {
+    @apply flex items-center gap-3 px-4 py-2 text-sm text-ink-600 hover:bg-ink-50 cursor-pointer transition-colors;
+  }
+  
+  .command-palette-item-selected {
+    @apply bg-signal-50 text-signal-700;
+  }
 
-/* Box-sizing globale per prevenire overflow */
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+  /* Skeleton Loading */
+  .skeleton {
+    @apply bg-gradient-to-r from-ink-100 via-ink-200 to-ink-100 bg-[length:200%_100%] animate-shimmer rounded;
+  }
 
-/* Reset margini e padding su elementi comuni */
-html, body, #root {
-  margin: 0;
-  padding: 0;
-}
+  /* Quick Action Card */
+  .quick-action {
+    @apply card card-hover flex flex-col items-center gap-2 p-4 text-center;
+  }
+  
+  .quick-action-icon {
+    @apply w-12 h-12 rounded-full bg-signal-500 flex items-center justify-center text-white;
+  }
+  
+  .quick-action-label {
+    @apply text-sm font-medium text-ink-700;
+  }
+  
+  .quick-action-shortcut {
+    @apply text-xs text-ink-400 font-mono;
+  }
 
-/* Utility per layout con altezza viewport */
-.viewport-container {
-  height: 100vh;
-  max-height: 100vh;
-  overflow: hidden;
-}
+  /* KPI Card */
+  .kpi-card {
+    @apply card flex flex-col gap-2;
+  }
+  
+  .kpi-label {
+    @apply text-xs font-medium text-ink-500 uppercase tracking-wider;
+  }
+  
+  .kpi-value {
+    @apply text-2xl font-bold font-mono text-ink-700;
+  }
+  
+  .kpi-trend {
+    @apply flex items-center gap-1 text-sm font-medium;
+  }
+  
+  .kpi-trend-positive {
+    @apply text-topo-600;
+  }
+  
+  .kpi-trend-negative {
+    @apply text-signal-600;
+  }
 
-.flex-layout {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.flex-content {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.scroll-container {
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-/* Fix per modali con altezza viewport */
-.modal-scroll-container {
-  max-height: calc(100vh - 4rem);
-  overflow-y: auto;
+  /* Activity Item */
+  .activity-item {
+    @apply flex items-start gap-3 py-3 border-b border-ink-100 last:border-0;
+  }
+  
+  .activity-icon {
+    @apply w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0;
+  }
+  
+  .activity-content {
+    @apply flex-1 min-w-0;
+  }
+  
+  .activity-title {
+    @apply text-sm font-medium text-ink-700;
+  }
+  
+  .activity-subtitle {
+    @apply text-xs text-ink-500;
+  }
+  
+  .activity-time {
+    @apply text-xs text-ink-400;
+  }
 }
 
 /* Responsive utilities */
-@media (max-width: 768px) {
-  .viewport-container {
-    height: 100vh;
-    max-height: 100vh;
+@media (max-width: 640px) {
+  .sidebar-mobile {
+    @apply fixed inset-y-0 left-0 z-40 w-64 transform -translate-x-full transition-transform duration-200;
   }
   
-  .modal-scroll-container {
-    max-height: calc(100vh - 2rem);
+  .sidebar-mobile-open {
+    @apply translate-x-0;
   }
 }
 
+@media (min-width: 641px) and (max-width: 1024px) {
+  .sidebar-tablet {
+    @apply w-16;
+  }
+  
+  .sidebar-tablet .sidebar-label {
+    @apply hidden;
+  }
+}
 
+/* Grid Texture dark mode */
+.dark .grid-texture {
+  background-image: 
+    linear-gradient(to right, var(--ink-200) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--ink-200) 1px, transparent 1px);
+  background-size: 22px 22px;
+}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, ChevronDown, Edit, Trash2, Check, X, Copy, ArrowRightCircle, User } from 'lucide-react';
+import { Plus, ChevronDown, Edit, Trash2, Check, X, Copy, ArrowRightCircle, User, Search } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/authStore';
 import { RubricaAutocomplete } from '../components/RubricaAutocomplete';
@@ -8,15 +8,6 @@ import { syncRubricaFromPratica } from '../utils/rubricaSync';
 import { ContextMenu } from '../components/ContextMenu';
 import type { ComuneCatasto, StatoGenerale, TipoIncarico, TipoPratica, Rubrica } from '../types';
 import toast from 'react-hot-toast';
-
-const useDebounce = (value: string, delay: number) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
-};
 
 const TriStateFilter = ({ value, onChange }: {
   value: 'all' | 'yes' | 'no';
@@ -26,35 +17,35 @@ const TriStateFilter = ({ value, onChange }: {
     <button
       onClick={() => onChange('all')}
       title="Tutti"
-      className={`p-1 rounded transition-all ${
+      className={`p-1 rounded-md transition-all duration-150 ${
         value === 'all'
-          ? 'bg-gray-200 dark:bg-gray-600 shadow-sm'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700 opacity-50 hover:opacity-100'
+          ? 'bg-ink-200 shadow-sm'
+          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
       }`}
     >
-      <div className="w-2.5 h-0.5 bg-gray-400 dark:bg-gray-500 rounded" />
+      <div className="w-2.5 h-0.5 bg-ink-400 rounded" />
     </button>
     <button
       onClick={() => onChange('yes')}
       title="Si"
-      className={`p-1 rounded transition-all ${
+      className={`p-1 rounded-md transition-all duration-150 ${
         value === 'yes'
-          ? 'bg-gray-200 dark:bg-gray-600 shadow-sm'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700 opacity-50 hover:opacity-100'
+          ? 'bg-ink-200 shadow-sm'
+          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
       }`}
     >
-      <Check className="w-3 h-3 text-green-600 dark:text-green-400" />
+      <Check className="w-3 h-3 text-topo-500" />
     </button>
     <button
       onClick={() => onChange('no')}
       title="No"
-      className={`p-1 rounded transition-all ${
+      className={`p-1 rounded-md transition-all duration-150 ${
         value === 'no'
-          ? 'bg-gray-200 dark:bg-gray-600 shadow-sm'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700 opacity-50 hover:opacity-100'
+          ? 'bg-ink-200 shadow-sm'
+          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
       }`}
     >
-      <X className="w-3 h-3 text-red-600 dark:text-red-400" />
+      <X className="w-3 h-3 text-error-500" />
     </button>
   </div>
 );
@@ -72,28 +63,34 @@ export const ComuneCatastoPage: React.FC = () => {
     stato: string;
     committente: string;
     proprieta: string;
+    indirizzo: string;
+    citta: string;
     note: string;
     tipo_incarico: string;
     tipo_pratica: string;
     comune: 'all' | 'yes' | 'no';
     catasto: 'all' | 'yes' | 'no';
     fine_lavori: 'all' | 'yes' | 'no';
-    pagamento: 'all' | 'yes' | 'no';
+    acconto: 'all' | 'yes' | 'no';
+    saldo: 'all' | 'yes' | 'no';
   }>({
     stato: '',
     committente: '',
     proprieta: '',
+    indirizzo: '',
+    citta: '',
     note: '',
     tipo_incarico: '',
     tipo_pratica: '',
     comune: 'all',
     catasto: 'all',
     fine_lavori: 'all',
-    pagamento: 'all'
+    acconto: 'all',
+    saldo: 'all'
   });
   const [presetFilters, setPresetFilters] = useState({
     nonCompletati: false,
-    nonPagati: false
+    nonPagate: false
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(() => {
@@ -129,23 +126,20 @@ export const ComuneCatastoPage: React.FC = () => {
     comune: false,
     catasto: false,
     fine_lavori: false,
-    pagamento: false,
+    acconto: false,
+    saldo: false,
+    omaggio: false,
     note: ''
   });
   const { user } = useAuthStore();
 
-  const debouncedCommittente = useDebounce(columnFilters.committente, 300);
-  const debouncedProprieta = useDebounce(columnFilters.proprieta, 300);
-  const debouncedNote = useDebounce(columnFilters.note, 300);
-
   const activeFilterCount = Object.entries(columnFilters).filter(([key, val]) => {
-    if (key === 'comune' || key === 'catasto' || key === 'fine_lavori' || key === 'pagamento') {
+    if (key === 'comune' || key === 'catasto' || key === 'fine_lavori' || key === 'acconto' || key === 'saldo') {
       return val !== 'all';
     }
     return val !== '';
   }).length + Object.values(presetFilters).filter(Boolean).length;
 
-  // Gestione parametri URL per filtri automatici
   useEffect(() => {
     const filter = searchParams.get('filter');
     if (!filter || !user?.id) return;
@@ -153,8 +147,6 @@ export const ComuneCatastoPage: React.FC = () => {
     const newPresetFilters = { ...presetFilters };
     if (filter === 'non_completati') {
       newPresetFilters.nonCompletati = true;
-    } else if (filter === 'non_pagate') {
-      newPresetFilters.nonPagati = true;
     }
 
     setPresetFilters(newPresetFilters);
@@ -162,7 +154,6 @@ export const ComuneCatastoPage: React.FC = () => {
     fetchData({ presetFilters: newPresetFilters, page: 1 });
   }, [searchParams, user?.id]);
 
-  // Gestione shortcut CTRL+INVIO per salvare
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (showModal && (event.ctrlKey || event.metaKey) && event.key === 'Enter') {
@@ -184,7 +175,6 @@ export const ComuneCatastoPage: React.FC = () => {
     };
   }, [showModal, submitting]);
 
-  // Protezione contro errori delle estensioni del browser
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
       if (event.filename && (
@@ -220,7 +210,6 @@ export const ComuneCatastoPage: React.FC = () => {
     };
   }, []);
 
-  // Chiusura menu contestuale al click esterno o tasto ESC
   useEffect(() => {
     if (!contextMenu.pratica) return;
 
@@ -237,22 +226,6 @@ export const ComuneCatastoPage: React.FC = () => {
     };
   }, [contextMenu.pratica]);
 
-  // Debounce effect: trigger fetch when debounced text values change
-  useEffect(() => {
-    if (user?.id) {
-      setColumnFilters(prev => {
-        const newFilters = {
-          ...prev,
-          committente: debouncedCommittente,
-          proprieta: debouncedProprieta,
-          note: debouncedNote
-        };
-        setTimeout(() => fetchData({ columnFilters: newFilters }), 0);
-        return newFilters;
-      });
-    }
-  }, [debouncedCommittente, debouncedProprieta, debouncedNote, user?.id]);
-
   const fetchData = async (customFilters?: {
     columnFilters?: typeof columnFilters;
     presetFilters?: typeof presetFilters;
@@ -267,13 +240,11 @@ export const ComuneCatastoPage: React.FC = () => {
       const currentPageParam = customFilters?.page ?? currentPage;
       const currentPerPage = customFilters?.perPage ?? recordsPerPage;
 
-      // Query conteggio
       let countQuery = supabase
         .from('comune_catasto')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user?.id);
 
-      // Query principale
       let query = supabase
         .from('comune_catasto')
         .select(`
@@ -286,13 +257,18 @@ export const ComuneCatastoPage: React.FC = () => {
         .order('stato', { ascending: true })
         .order('created_at', { ascending: false });
 
-      // Filtro ricerca multi-campo (committente + proprieta + note)
       const searchParts: string[] = [];
       if (currentFilters.committente.trim()) {
         searchParts.push(`committente.ilike.%${currentFilters.committente}%`);
       }
       if (currentFilters.proprieta.trim()) {
         searchParts.push(`proprieta.ilike.%${currentFilters.proprieta}%,proprieta2.ilike.%${currentFilters.proprieta}%`);
+      }
+      if (currentFilters.indirizzo.trim()) {
+        searchParts.push(`indirizzo.ilike.%${currentFilters.indirizzo}%`);
+      }
+      if (currentFilters.citta.trim()) {
+        searchParts.push(`citta.ilike.%${currentFilters.citta}%`);
       }
       if (currentFilters.note.trim()) {
         searchParts.push(`note.ilike.%${currentFilters.note}%`);
@@ -303,25 +279,21 @@ export const ComuneCatastoPage: React.FC = () => {
         query = query.or(searchFilter);
       }
 
-      // Filtro stato
       if (currentFilters.stato) {
         countQuery = countQuery.eq('stato', parseInt(currentFilters.stato));
         query = query.eq('stato', parseInt(currentFilters.stato));
       }
 
-      // Filtro tipo incarico
       if (currentFilters.tipo_incarico) {
         countQuery = countQuery.eq('tipo_incarico', parseInt(currentFilters.tipo_incarico));
         query = query.eq('tipo_incarico', parseInt(currentFilters.tipo_incarico));
       }
 
-      // Filtro tipo pratica
       if (currentFilters.tipo_pratica) {
         countQuery = countQuery.eq('tipo_pratica', parseInt(currentFilters.tipo_pratica));
         query = query.eq('tipo_pratica', parseInt(currentFilters.tipo_pratica));
       }
 
-      // Filtro comune
       if (currentFilters.comune === 'yes') {
         countQuery = countQuery.eq('comune', true);
         query = query.eq('comune', true);
@@ -330,7 +302,6 @@ export const ComuneCatastoPage: React.FC = () => {
         query = query.eq('comune', false);
       }
 
-      // Filtro catasto
       if (currentFilters.catasto === 'yes') {
         countQuery = countQuery.eq('catasto', true);
         query = query.eq('catasto', true);
@@ -339,7 +310,6 @@ export const ComuneCatastoPage: React.FC = () => {
         query = query.eq('catasto', false);
       }
 
-      // Filtro fine lavori
       if (currentFilters.fine_lavori === 'yes') {
         countQuery = countQuery.eq('fine_lavori', true);
         query = query.eq('fine_lavori', true);
@@ -348,53 +318,41 @@ export const ComuneCatastoPage: React.FC = () => {
         query = query.eq('fine_lavori', false);
       }
 
-      // Filtro pagamento
-      if (currentFilters.pagamento !== 'all') {
-        let statiFiltroNonPagata: number[] = [];
-        const { data: statiNonPagata } = await supabase
-          .from('stati_generali')
-          .select('id')
-          .eq('filtro_non_pagata', 1);
-        statiFiltroNonPagata = (statiNonPagata || []).map((s: { id: number }) => s.id);
-
-        if (currentFilters.pagamento === 'no') {
-          if (statiFiltroNonPagata.length > 0) {
-            countQuery = countQuery.eq('pagamento', false).in('stato', statiFiltroNonPagata);
-            query = query.eq('pagamento', false).in('stato', statiFiltroNonPagata);
-          } else {
-            countQuery = countQuery.eq('pagamento', false);
-            query = query.eq('pagamento', false);
-          }
-        } else if (currentFilters.pagamento === 'yes') {
-          countQuery = countQuery.eq('pagamento', true);
-          query = query.eq('pagamento', true);
-        }
+      if (currentFilters.acconto === 'yes') {
+        countQuery = countQuery.eq('acconto', true);
+        query = query.eq('acconto', true);
+      } else if (currentFilters.acconto === 'no') {
+        countQuery = countQuery.eq('acconto', false);
+        query = query.eq('acconto', false);
       }
 
-      // Filtri preimpostati
+      if (currentFilters.saldo === 'yes') {
+        countQuery = countQuery.eq('saldo', true);
+        query = query.eq('saldo', true);
+      } else if (currentFilters.saldo === 'no') {
+        countQuery = countQuery.eq('saldo', false);
+        query = query.eq('saldo', false);
+      }
+
       if (currentPresetFilters.nonCompletati) {
         countQuery = countQuery.neq('stato', 3);
         query = query.neq('stato', 3);
       }
 
-      if (currentPresetFilters.nonPagati) {
-        let statiFiltroNonPagata: number[] = [];
+      if (currentPresetFilters.nonPagate) {
         const { data: statiNonPagata } = await supabase
           .from('stati_generali')
           .select('id')
           .eq('filtro_non_pagata', 1);
-        statiFiltroNonPagata = (statiNonPagata || []).map((s: { id: number }) => s.id);
-
-        if (statiFiltroNonPagata.length > 0) {
-          countQuery = countQuery.eq('pagamento', false).in('stato', statiFiltroNonPagata);
-          query = query.eq('pagamento', false).in('stato', statiFiltroNonPagata);
-        } else {
-          countQuery = countQuery.eq('pagamento', false);
-          query = query.eq('pagamento', false);
+        const ids = (statiNonPagata || []).map(s => s.id);
+        countQuery = countQuery.eq('saldo', false);
+        query = query.eq('saldo', false);
+        if (ids.length > 0) {
+          countQuery = countQuery.in('stato', ids);
+          query = query.in('stato', ids);
         }
       }
 
-      // Conteggio totale
       const { count, error: countError } = await countQuery;
       if (countError) {
         console.error('Errore nel conteggio:', countError);
@@ -402,7 +360,6 @@ export const ComuneCatastoPage: React.FC = () => {
         setTotalRecords(count || 0);
       }
 
-      // Paginazione
       const from = (currentPageParam - 1) * currentPerPage;
       const to = from + currentPerPage - 1;
       query = query.range(from, to);
@@ -415,7 +372,6 @@ export const ComuneCatastoPage: React.FC = () => {
         return;
       }
 
-      // Carica stati e tipi (solo se non già caricati)
       if (stati.length === 0 || tipiIncarico.length === 0 || tipiPratica.length === 0) {
         const [statiResult, tipiResult, tipiPraticaResult] = await Promise.all([
           supabase.from('stati_generali').select('*').order('ordinamento'),
@@ -443,11 +399,8 @@ export const ComuneCatastoPage: React.FC = () => {
     }
   }, [user?.id]);
 
-  // Setup Supabase Realtime subscription per i flag
   useEffect(() => {
     if (!user?.id) return;
-
-    console.log('Setting up realtime subscription for ComuneCatasto flags, user:', user.id);
 
     const channel = supabase
       .channel('comune-catasto-realtime')
@@ -460,7 +413,6 @@ export const ComuneCatastoPage: React.FC = () => {
           filter: `user_id=eq.${user.id}`
         },
         async (payload) => {
-          console.log('Realtime update received for ComuneCatasto:', payload);
           setLastUpdateTime(new Date());
 
           if (payload.eventType === 'INSERT') {
@@ -508,9 +460,6 @@ export const ComuneCatastoPage: React.FC = () => {
               const oldPratica = payload.old as ComuneCatasto;
               const messaggiToast: string[] = [];
 
-              if (oldPratica.pagamento !== updatedRecord.pagamento) {
-                messaggiToast.push(updatedRecord.pagamento ? 'Pagamento marcato come effettuato' : 'Pagamento marcato come non effettuato');
-              }
               if (oldPratica.comune !== updatedRecord.comune) {
                 messaggiToast.push(updatedRecord.comune ? 'Comune marcato come completato' : 'Comune marcato come non completato');
               }
@@ -519,6 +468,15 @@ export const ComuneCatastoPage: React.FC = () => {
               }
               if (oldPratica.fine_lavori !== updatedRecord.fine_lavori) {
                 messaggiToast.push(updatedRecord.fine_lavori ? 'Fine lavori marcato come completato' : 'Fine lavori marcato come non completato');
+              }
+              if (oldPratica.acconto !== updatedRecord.acconto) {
+                messaggiToast.push(updatedRecord.acconto ? 'Acconto marcato come ricevuto' : 'Acconto marcato come non ricevuto');
+              }
+              if (oldPratica.saldo !== updatedRecord.saldo) {
+                messaggiToast.push(updatedRecord.saldo ? 'Saldo marcato come ricevuto' : 'Saldo marcato come non ricevuto');
+              }
+              if (oldPratica.omaggio !== updatedRecord.omaggio) {
+                messaggiToast.push(updatedRecord.omaggio ? 'Omaggio marcato come consegnato' : 'Omaggio marcato come non consegnato');
               }
               if (oldPratica.stato !== updatedRecord.stato) {
                 const oldStato = stati.find(s => s.id === oldPratica.stato)?.descrizione || 'N/A';
@@ -531,7 +489,6 @@ export const ComuneCatastoPage: React.FC = () => {
                   toast.success(messaggiToast[0]);
                 } else {
                   toast.success(messaggiToast[0]);
-                  console.log('Altri aggiornamenti:', messaggiToast.slice(1));
                 }
               }
             }
@@ -545,14 +502,12 @@ export const ComuneCatastoPage: React.FC = () => {
         }
       )
       .subscribe((status) => {
-        console.log('ComuneCatasto subscription status:', status);
         if (status === 'SUBSCRIBED') {
           setRealtimeConnected(true);
         }
       });
 
     return () => {
-      console.log('Cleaning up ComuneCatasto realtime subscription');
       supabase.removeChannel(channel);
       setRealtimeConnected(false);
     };
@@ -565,11 +520,11 @@ export const ComuneCatastoPage: React.FC = () => {
 
   const handleResetFilters = () => {
     const defaultFilters: typeof columnFilters = {
-      stato: '', committente: '', proprieta: '', note: '',
+      stato: '', committente: '', proprieta: '', indirizzo: '', citta: '', note: '',
       tipo_incarico: '', tipo_pratica: '',
-      comune: 'all', catasto: 'all', fine_lavori: 'all', pagamento: 'all'
+      comune: 'all', catasto: 'all', fine_lavori: 'all', acconto: 'all', saldo: 'all'
     };
-    const defaultPresetFilters = { nonCompletati: false, nonPagati: false };
+    const defaultPresetFilters = { nonCompletati: false, nonPagate: false };
     setColumnFilters(defaultFilters);
     setPresetFilters(defaultPresetFilters);
     setCurrentPage(1);
@@ -609,7 +564,7 @@ export const ComuneCatastoPage: React.FC = () => {
     return Math.ceil(totalRecords / recordsPerPage);
   };
 
-  const handleToggleField = async (pratica: ComuneCatasto, field: 'comune' | 'catasto' | 'fine_lavori' | 'pagamento') => {
+  const handleToggleField = async (pratica: ComuneCatasto, field: 'comune' | 'catasto' | 'fine_lavori' | 'acconto' | 'saldo' | 'omaggio') => {
     if (!isFlagAbilitatoInTabella(pratica, field)) {
       toast.error(`Il campo ${field} non può essere modificato per questo tipo di incarico`);
       return;
@@ -617,11 +572,15 @@ export const ComuneCatastoPage: React.FC = () => {
 
     try {
       const newValue = !pratica[field];
-      console.log(`Toggling ${field} for pratica ${pratica.id} from ${pratica[field]} to ${newValue}`);
 
       const updateData: any = { [field]: newValue };
       if (field === 'comune' && !newValue) {
         updateData.fine_lavori = false;
+      }
+      if (field === 'saldo') {
+        if (newValue) {
+          updateData.acconto = true;
+        }
       }
 
       const praticaAggiornata = { ...pratica, ...updateData };
@@ -689,15 +648,7 @@ export const ComuneCatastoPage: React.FC = () => {
       stato.descrizione.toLowerCase().includes('lavorazione')
     );
 
-    if (!statoCompletata) {
-      console.warn('Stato "Completata" non trovato nella tabella stati_generali');
-      return null;
-    }
-
-    if (!statoInCorso) {
-      console.warn('Stato "In corso" non trovato nella tabella stati_generali');
-      return null;
-    }
+    if (!statoCompletata || !statoInCorso) return null;
 
     let tuttiIFlagCompletati = true;
 
@@ -724,7 +675,7 @@ export const ComuneCatastoPage: React.FC = () => {
     return null;
   };
 
-  const isFlagAbilitatoInTabella = (pratica: ComuneCatasto, flagName: 'comune' | 'catasto' | 'fine_lavori' | 'pagamento') => {
+  const isFlagAbilitatoInTabella = (pratica: ComuneCatasto, flagName: 'comune' | 'catasto' | 'fine_lavori' | 'acconto' | 'saldo' | 'omaggio') => {
     const tipoIncarico = pratica.tipo_incarico_info;
 
     switch (flagName) {
@@ -734,7 +685,10 @@ export const ComuneCatastoPage: React.FC = () => {
         return tipoIncarico?.catasto === true;
       case 'fine_lavori':
         return pratica.comune === true;
-      case 'pagamento':
+      case 'acconto':
+        return pratica.saldo !== true; // Disabilita acconto se saldo è flaggato
+      case 'saldo':
+      case 'omaggio':
         return true;
       default:
         return false;
@@ -848,7 +802,9 @@ export const ComuneCatastoPage: React.FC = () => {
         ...praticaData,
         committente: `${praticaData.committente}`,
         stato: 1,
-        pagamento: false,
+        acconto: false,
+        saldo: false,
+        omaggio: false,
         created_at: new Date().toISOString(),
         user_id: user?.id
       };
@@ -873,14 +829,12 @@ export const ComuneCatastoPage: React.FC = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     if (!e || !e.target) {
-      console.warn('Evento malformato ignorato');
       return;
     }
 
     const { name, value, type } = e.target;
 
     if (!name) {
-      console.warn('Nome campo non definito');
       return;
     }
 
@@ -935,7 +889,9 @@ export const ComuneCatastoPage: React.FC = () => {
           comune: formData.comune,
           catasto: formData.catasto,
           fine_lavori: formData.fine_lavori,
-          pagamento: formData.pagamento,
+          acconto: formData.acconto,
+          saldo: formData.saldo,
+          omaggio: formData.omaggio,
           note: formData.note,
           created_at: editingPratica?.created_at || new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -985,7 +941,9 @@ export const ComuneCatastoPage: React.FC = () => {
                   comune: dataToSave.comune,
                   catasto: dataToSave.catasto,
                   fine_lavori: dataToSave.fine_lavori,
-                  pagamento: dataToSave.pagamento,
+                  acconto: dataToSave.acconto,
+                  saldo: dataToSave.saldo,
+                  omaggio: dataToSave.omaggio,
                   note: dataToSave.note || null,
                   updated_at: new Date().toISOString()
                 } as ComuneCatasto
@@ -1042,7 +1000,6 @@ export const ComuneCatastoPage: React.FC = () => {
                 note: formData.note.trim() || null,
                 registrazione: 1,
                 progressivo: '',
-                pagamento: false,
                 user_id: user?.id
               }]);
 
@@ -1093,7 +1050,9 @@ export const ComuneCatastoPage: React.FC = () => {
         comune: pratica.comune,
         catasto: pratica.catasto,
         fine_lavori: pratica.fine_lavori,
-        pagamento: pratica.pagamento,
+        acconto: pratica.acconto,
+        saldo: pratica.saldo,
+        omaggio: pratica.omaggio,
         note: pratica.note || ''
       };
 
@@ -1115,7 +1074,9 @@ export const ComuneCatastoPage: React.FC = () => {
         comune: false,
         catasto: false,
         fine_lavori: false,
-        pagamento: false,
+        acconto: false,
+        saldo: false,
+        omaggio: false,
         note: ''
       };
 
@@ -1143,7 +1104,9 @@ export const ComuneCatastoPage: React.FC = () => {
       comune: false,
       catasto: false,
       fine_lavori: false,
-      pagamento: false,
+      acconto: false,
+      saldo: false,
+      omaggio: false,
       note: ''
     });
   };
@@ -1153,7 +1116,7 @@ export const ComuneCatastoPage: React.FC = () => {
     return tipiIncarico.find(tipo => tipo.id === parseInt(formData.tipo_incarico));
   };
 
-  const isFlagAbilitato = (flagName: 'comune' | 'catasto' | 'fine_lavori' | 'pagamento') => {
+  const isFlagAbilitato = (flagName: 'comune' | 'catasto' | 'fine_lavori' | 'acconto' | 'saldo' | 'omaggio') => {
     const tipoSelezionato = getTipoIncaricoSelezionato();
 
     switch (flagName) {
@@ -1163,7 +1126,10 @@ export const ComuneCatastoPage: React.FC = () => {
         return tipoSelezionato?.catasto === true;
       case 'fine_lavori':
         return formData.comune === true;
-      case 'pagamento':
+      case 'acconto':
+        return formData.saldo !== true; // Disabilita acconto se saldo è flaggato
+      case 'saldo':
+      case 'omaggio':
         return true;
       default:
         return false;
@@ -1203,9 +1169,19 @@ export const ComuneCatastoPage: React.FC = () => {
     }));
   };
 
+  const handleSaldoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nuovoSaldo = e.target.checked;
+
+    setFormData(prev => ({
+      ...prev,
+      saldo: nuovoSaldo,
+      acconto: nuovoSaldo ? true : prev.acconto
+    }));
+  };
+
   const getStatoStyle = (stato: StatoGenerale | undefined) => {
-    if (!stato || !stato.colore) return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
-    return `text-white`;
+    if (!stato || !stato.colore) return 'bg-ink-100 text-ink-800';
+    return 'text-white';
   };
 
   const getStatoBackgroundColor = (stato: StatoGenerale | undefined) => {
@@ -1216,38 +1192,38 @@ export const ComuneCatastoPage: React.FC = () => {
   const renderToggleButton = (value: boolean, enabled: boolean = true) => {
     return (
       <div
-        className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 ${enabled ? 'hover:scale-110' : ''
+        className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-150 ${enabled ? 'hover:scale-105' : ''
           } ${value
-            ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50'
-            : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600'
-          } ${!enabled ? 'opacity-30 cursor-not-allowed border-2 border-dashed border-gray-300 dark:border-gray-600' : ''
+            ? 'bg-topo-100 hover:bg-topo-200'
+            : 'bg-ink-100 hover:bg-ink-200'
+          } ${!enabled ? 'opacity-70 cursor-not-allowed border-2 border-dashed border-ink-300' : ''
           }`}
       >
         {value ? (
-          <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+          <Check className="w-4 h-4 text-topo-600" />
         ) : (
-          <X className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+          <X className="w-4 h-4 text-ink-400" />
         )}
       </div>
     );
   };
 
   return (
-    <div className="h-full flex flex-col px-4">
+    <div className="h-full flex flex-col">
 
-      <div className="space-y-3 flex-1 flex flex-col">
+      <div className="gap-3 flex-1 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Comune e Catasto</h1>
-            <p className="text-gray-600 dark:text-gray-300">Gestione pratiche</p>
+            <h1 className="text-2xl font-display font-bold text-ink-700">Comune e Catasto</h1>
+            <p className="text-ink-500">Gestione pratiche</p>
             {realtimeConnected && (
               <div className="flex items-center gap-2 mt-1">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-xs text-green-600 dark:text-green-400">
+                <div className="w-2 h-2 bg-topo-500 rounded-full animate-pulse"></div>
+                <span className="text-xs text-topo-600">
                   Aggiornamenti in tempo reale attivi
                   {lastUpdateTime && (
-                    <span className="ml-1 text-gray-500 dark:text-gray-400">
+                    <span className="ml-1 text-ink-400">
                       (ultimo: {lastUpdateTime.toLocaleTimeString('it-IT')})
                     </span>
                   )}
@@ -1258,17 +1234,19 @@ export const ComuneCatastoPage: React.FC = () => {
           <div className="flex items-center gap-3">
             {activeFilterCount > 0 && (
               <button
+                type="button"
                 onClick={handleResetFilters}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-ink-600 bg-ink-100 rounded-md hover:bg-ink-200 transition-colors"
               >
                 <X className="w-4 h-4" />
                 Reset filtri
-                <span className="bg-blue-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                <span className="bg-signal-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
                   {activeFilterCount}
                 </span>
               </button>
             )}
             <button
+              type="button"
               onClick={() => openModal()}
               className="btn btn-primary flex items-center gap-2"
             >
@@ -1280,10 +1258,10 @@ export const ComuneCatastoPage: React.FC = () => {
 
         {/* Filtri preimpostati */}
         <div className="flex flex-wrap gap-3">
-          <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 ${
+          <label className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-all duration-150 ${
             presetFilters.nonCompletati
-              ? 'bg-orange-500 text-white shadow-md'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              ? 'bg-signal-500 text-white shadow-md'
+              : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
           }`}>
             <input
               type="checkbox"
@@ -1294,119 +1272,226 @@ export const ComuneCatastoPage: React.FC = () => {
             Non completati
           </label>
 
-          <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 ${
-            presetFilters.nonPagati
-              ? 'bg-blue-500 text-white shadow-md'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+          <label className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-all duration-150 ${
+            presetFilters.nonPagate
+              ? 'bg-red-500 text-white shadow-md'
+              : 'bg-ink-100 text-ink-600 hover:bg-ink-200'
           }`}>
             <input
               type="checkbox"
-              checked={presetFilters.nonPagati}
-              onChange={() => handlePresetFilterToggle('nonPagati')}
+              checked={presetFilters.nonPagate}
+              onChange={() => handlePresetFilterToggle('nonPagate')}
               className="sr-only"
             />
-            Non pagati
+            Non pagate
           </label>
         </div>
 
         {/* Tabella - Container con altezza flessibile e scroll interno */}
-        <div className="card p-0 dark:bg-gray-800 dark:border-gray-700 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
+        <div className="card card-flush p-0 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
           <div className="overflow-x-auto h-full overflow-y-auto">
-            <table className="w-full" style={{ minHeight: '400px' }}>
-              <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+            <table className="w-full table" style={{ minHeight: '400px' }}>
+              <thead className="table-header">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="table-cell text-left">
                     Stato
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="table-cell text-left">
                     Committente
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="table-cell text-left">
                     Proprietà
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="table-cell text-left">
+                    Indirizzo
+                  </th>
+                  <th className="table-cell text-left">
+                    Città
+                  </th>
+                  <th className="table-cell text-left">
                     Note
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="table-cell text-left">
                     Tipo Incarico
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="table-cell text-left">
                     Tipo Pratica
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="table-cell text-center">
                     Comune
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="table-cell text-center">
                     Catasto
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="table-cell text-center">
                     Fine Lavori
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    Pagamento
+                  <th className="table-cell text-center">
+                    Acconto
+                  </th>
+                  <th className="table-cell text-center">
+                    Saldo
                   </th>
                 </tr>
                 {/* Riga filtri inline */}
-                <tr className="bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
+                <tr className="bg-ink-100 border-b border-ink-200">
                   <td className="px-2 py-1.5">
                     <div className="relative">
                       <select
                         value={columnFilters.stato}
                         onChange={(e) => handleApplyFilter({ stato: e.target.value })}
-                        className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white appearance-none pr-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full text-xs px-2 py-1.5 border border-ink-300 rounded-md bg-white text-ink-700 appearance-none pr-6 focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500"
                       >
-                        <option value="" className="bg-white dark:bg-gray-700 dark:text-gray-200">Tutti</option>
+                        <option value="" className="bg-white">Tutti</option>
                         {stati.map((stato) => (
-                          <option key={stato.id} value={stato.id} className="bg-white dark:bg-gray-700 dark:text-gray-200">
+                          <option key={stato.id} value={stato.id} className="bg-white">
                             {stato.descrizione}
                           </option>
                         ))}
                       </select>
-                      <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                      <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-ink-400 pointer-events-none" />
                     </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={columnFilters.committente}
-                      onChange={(e) => handleColumnFilterChange('committente', e.target.value)}
-                      placeholder="Cerca..."
-                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.committente}
+                        onChange={(e) => handleColumnFilterChange('committente', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ committente: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded-md bg-white text-ink-700 placeholder-ink-400 focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleApplyFilter({ committente: columnFilters.committente })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={columnFilters.proprieta}
-                      onChange={(e) => handleColumnFilterChange('proprieta', e.target.value)}
-                      placeholder="Cerca..."
-                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.proprieta}
+                        onChange={(e) => handleColumnFilterChange('proprieta', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ proprieta: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded-md bg-white text-ink-700 placeholder-ink-400 focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleApplyFilter({ proprieta: columnFilters.proprieta })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={columnFilters.note}
-                      onChange={(e) => handleColumnFilterChange('note', e.target.value)}
-                      placeholder="Cerca..."
-                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.indirizzo}
+                        onChange={(e) => handleColumnFilterChange('indirizzo', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ indirizzo: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded-md bg-white text-ink-700 placeholder-ink-400 focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleApplyFilter({ indirizzo: columnFilters.indirizzo })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.citta}
+                        onChange={(e) => handleColumnFilterChange('citta', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ citta: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded-md bg-white text-ink-700 placeholder-ink-400 focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleApplyFilter({ citta: columnFilters.citta })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.note}
+                        onChange={(e) => handleColumnFilterChange('note', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ note: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded-md bg-white text-ink-700 placeholder-ink-400 focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleApplyFilter({ note: columnFilters.note })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">
                     <div className="relative">
                       <select
                         value={columnFilters.tipo_incarico}
                         onChange={(e) => handleApplyFilter({ tipo_incarico: e.target.value })}
-                        className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white appearance-none pr-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full text-xs px-2 py-1.5 border border-ink-300 rounded-md bg-white text-ink-700 appearance-none pr-6 focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500"
                       >
-                        <option value="" className="bg-white dark:bg-gray-700 dark:text-gray-200">Tutti</option>
+                        <option value="" className="bg-white">Tutti</option>
                         {tipiIncarico.map((tipo) => (
-                          <option key={tipo.id} value={tipo.id} className="bg-white dark:bg-gray-700 dark:text-gray-200">
+                          <option key={tipo.id} value={tipo.id} className="bg-white">
                             {tipo.descrizione}
                           </option>
                         ))}
                       </select>
-                      <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                      <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-ink-400 pointer-events-none" />
                     </div>
                   </td>
                   <td className="px-2 py-1.5">
@@ -1414,16 +1499,16 @@ export const ComuneCatastoPage: React.FC = () => {
                       <select
                         value={columnFilters.tipo_pratica}
                         onChange={(e) => handleApplyFilter({ tipo_pratica: e.target.value })}
-                        className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white appearance-none pr-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full text-xs px-2 py-1.5 border border-ink-300 rounded-md bg-white text-ink-700 appearance-none pr-6 focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500"
                       >
-                        <option value="" className="bg-white dark:bg-gray-700 dark:text-gray-200">Tutti</option>
+                        <option value="" className="bg-white">Tutti</option>
                         {tipiPratica.map((tipo) => (
-                          <option key={tipo.id} value={tipo.id} className="bg-white dark:bg-gray-700 dark:text-gray-200">
+                          <option key={tipo.id} value={tipo.id} className="bg-white">
                             {tipo.descrizione}
                           </option>
                         ))}
                       </select>
-                      <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                      <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-ink-400 pointer-events-none" />
                     </div>
                   </td>
                   <td className="px-2 py-1.5 text-center">
@@ -1446,31 +1531,37 @@ export const ComuneCatastoPage: React.FC = () => {
                   </td>
                   <td className="px-2 py-1.5 text-center">
                     <TriStateFilter
-                      value={columnFilters.pagamento}
-                      onChange={(v) => handleApplyFilter({ pagamento: v })}
+                      value={columnFilters.acconto}
+                      onChange={(v) => handleApplyFilter({ acconto: v })}
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    <TriStateFilter
+                      value={columnFilters.saldo}
+                      onChange={(v) => handleApplyFilter({ saldo: v })}
                     />
                   </td>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              <tbody className="bg-white divide-y divide-ink-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={13} className="px-6 py-8 text-center text-ink-500">
                       <div className="flex items-center justify-center">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-signal-500"></div>
                         <span className="ml-2">Caricamento...</span>
                       </div>
                     </td>
                   </tr>
                 ) : pratiche.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={13} className="px-6 py-8 text-center text-ink-500">
                       Nessuna pratica trovata
                     </td>
                   </tr>
                 ) : (
                   pratiche.map((pratica) => (
-                    <tr key={pratica.id} className="hover:bg-gray-50 dark:hover:bg-gray-700" onContextMenu={(e) => handleContextMenu(e, pratica)}>
+                    <tr key={pratica.id} className="table-row hover:bg-ink-50" onContextMenu={(e) => handleContextMenu(e, pratica)}>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(pratica.stato_info)}`}
@@ -1479,22 +1570,28 @@ export const ComuneCatastoPage: React.FC = () => {
                           {pratica.stato_info?.descrizione || 'N/A'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
+                      <td className="table-cell font-medium text-ink-700">
                         {pratica.committente}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                      <td className="table-cell text-ink-600">
                         {combineProprieta(pratica.proprieta, pratica.proprieta2)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 max-w-xs truncate">
+                      <td className="table-cell text-ink-600 max-w-xs truncate">
+                        {pratica.indirizzo || '-'}
+                      </td>
+                      <td className="table-cell text-ink-600 max-w-xs truncate">
+                        {pratica.citta || '-'}
+                      </td>
+                      <td className="table-cell text-ink-600 max-w-xs truncate">
                         {pratica.note || '-'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                      <td className="table-cell text-ink-600">
                         {pratica.tipo_incarico_info?.descrizione || '-'}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                      <td className="table-cell text-ink-600">
                         {pratica.tipo_pratica_info?.descrizione || '-'}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="table-cell text-center">
                         <button
                           onClick={() => handleToggleField(pratica, 'comune')}
                           disabled={!isFlagAbilitatoInTabella(pratica, 'comune')}
@@ -1511,7 +1608,7 @@ export const ComuneCatastoPage: React.FC = () => {
                           {renderToggleButton(pratica.comune, isFlagAbilitatoInTabella(pratica, 'comune'))}
                         </button>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="table-cell text-center">
                         <button
                           onClick={() => handleToggleField(pratica, 'catasto')}
                           disabled={!isFlagAbilitatoInTabella(pratica, 'catasto')}
@@ -1528,7 +1625,7 @@ export const ComuneCatastoPage: React.FC = () => {
                           {renderToggleButton(pratica.catasto, isFlagAbilitatoInTabella(pratica, 'catasto'))}
                         </button>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="table-cell text-center">
                         <button
                           onClick={() => handleToggleField(pratica, 'fine_lavori')}
                           disabled={!isFlagAbilitatoInTabella(pratica, 'fine_lavori')}
@@ -1545,13 +1642,22 @@ export const ComuneCatastoPage: React.FC = () => {
                           {renderToggleButton(pratica.fine_lavori, isFlagAbilitatoInTabella(pratica, 'fine_lavori'))}
                         </button>
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="table-cell text-center">
                         <button
-                          onClick={() => handleToggleField(pratica, 'pagamento')}
+                          onClick={() => handleToggleField(pratica, 'acconto')}
                           className="transition-colors cursor-pointer"
                           title="Clicca per cambiare stato"
                         >
-                          {renderToggleButton(pratica.pagamento, true)}
+                          {renderToggleButton(pratica.acconto, pratica.saldo !== true)}
+                        </button>
+                      </td>
+                      <td className="table-cell text-center">
+                        <button
+                          onClick={() => handleToggleField(pratica, 'saldo')}
+                          className="transition-colors cursor-pointer"
+                          title="Clicca per cambiare stato"
+                        >
+                          {renderToggleButton(pratica.saldo, true)}
                         </button>
                       </td>
                     </tr>
@@ -1563,19 +1669,19 @@ export const ComuneCatastoPage: React.FC = () => {
 
           {/* Controlli Paginazione */}
           {pratiche.length > 0 && (
-            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+            <div className="px-6 py-4 border-t border-ink-200 bg-ink-50">
               <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="text-sm text-gray-500 dark:text-gray-400">
+                <div className="text-sm text-ink-500">
                   Mostrando {Math.min((currentPage - 1) * recordsPerPage + 1, totalRecords)} - {Math.min(currentPage * recordsPerPage, totalRecords)} di {totalRecords} pratiche
                 </div>
 
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-500 dark:text-gray-400">Record:</span>
+                    <span className="text-sm text-ink-500">Record:</span>
                     <select
                       value={recordsPerPage}
                       onChange={(e) => handleRecordsPerPageChange(parseInt(e.target.value))}
-                      className="input py-1 px-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      className="input py-1 px-2 text-sm"
                     >
                       <option value={25}>25</option>
                       <option value={50}>50</option>
@@ -1589,7 +1695,7 @@ export const ComuneCatastoPage: React.FC = () => {
                       <button
                         onClick={() => handlePageChange(1)}
                         disabled={currentPage === 1}
-                        className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                        className="px-3 py-1 text-sm border border-ink-300 rounded-md hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed text-ink-600"
                       >
                         ««
                       </button>
@@ -1597,7 +1703,7 @@ export const ComuneCatastoPage: React.FC = () => {
                       <button
                         onClick={() => handlePageChange(currentPage - 1)}
                         disabled={currentPage === 1}
-                        className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                        className="px-3 py-1 text-sm border border-ink-300 rounded-md hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed text-ink-600"
                       >
                         ‹
                       </button>
@@ -1618,9 +1724,9 @@ export const ComuneCatastoPage: React.FC = () => {
                           <button
                             key={pageNum}
                             onClick={() => handlePageChange(pageNum)}
-                            className={`px-3 py-1 text-sm border rounded ${currentPage === pageNum
-                                ? 'bg-blue-500 text-white border-blue-500'
-                                : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 dark:text-gray-300'
+                            className={`px-3 py-1 text-sm border rounded-md ${currentPage === pageNum
+                                ? 'bg-signal-500 text-white border-signal-500'
+                                : 'border-ink-300 hover:bg-ink-100 text-ink-600'
                               }`}
                           >
                             {pageNum}
@@ -1631,7 +1737,7 @@ export const ComuneCatastoPage: React.FC = () => {
                       <button
                         onClick={() => handlePageChange(currentPage + 1)}
                         disabled={currentPage === getTotalPages()}
-                        className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                        className="px-3 py-1 text-sm border border-ink-300 rounded-md hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed text-ink-600"
                       >
                         ›
                       </button>
@@ -1639,7 +1745,7 @@ export const ComuneCatastoPage: React.FC = () => {
                       <button
                         onClick={() => handlePageChange(getTotalPages())}
                         disabled={currentPage === getTotalPages()}
-                        className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                        className="px-3 py-1 text-sm border border-ink-300 rounded-md hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed text-ink-600"
                       >
                         »»
                       </button>
@@ -1648,7 +1754,7 @@ export const ComuneCatastoPage: React.FC = () => {
                 </div>
 
                 {getTotalPages() > 1 && (
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                  <div className="text-sm text-ink-500">
                     Pagina {currentPage} di {getTotalPages()}
                   </div>
                 )}
@@ -1660,25 +1766,26 @@ export const ComuneCatastoPage: React.FC = () => {
         {/* Modal Nuova Pratica */}
         {showModal && (
           <div className="modal-overlay">
-            <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl modal-scroll-container">
-              <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+            <div className="modal w-full max-w-4xl modal-scroll-container">
+              <div className="modal-header">
+                <h2 className="text-xl font-display font-bold text-ink-700">
                   {editingPratica ? 'Modifica Pratica' : 'Nuova Pratica'}
                 </h2>
                 <button
+                  type="button"
                   onClick={closeModal}
-                  className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  className="p-2 rounded-md text-ink-400 hover:text-ink-600 hover:bg-ink-100 transition-colors"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6">
+              <form onSubmit={handleSubmit} className="modal-body">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Prima colonna */}
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Committente *
                       </label>
                       <input
@@ -1687,13 +1794,13 @@ export const ComuneCatastoPage: React.FC = () => {
                         value={formData.committente}
                         onChange={handleInputChange}
                         placeholder="Nome committente"
-                        className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                        className="input w-full"
                         required
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Stato
                       </label>
                       <div className="relative">
@@ -1701,7 +1808,7 @@ export const ComuneCatastoPage: React.FC = () => {
                           name="stato"
                           value={formData.stato}
                           onChange={handleInputChange}
-                          className="input w-full pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                          className="input w-full pr-8 appearance-none"
                         >
                           <option value="">-- Seleziona stato --</option>
                           {stati.map((stato) => (
@@ -1710,12 +1817,12 @@ export const ComuneCatastoPage: React.FC = () => {
                             </option>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                        <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-400" />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Proprietà
                       </label>
                       <RubricaAutocomplete
@@ -1734,7 +1841,7 @@ export const ComuneCatastoPage: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Proprietà 2
                       </label>
                       <input
@@ -1743,12 +1850,12 @@ export const ComuneCatastoPage: React.FC = () => {
                         value={formData.proprieta2}
                         onChange={handleInputChange}
                         placeholder="Nome secondo proprietario"
-                        className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                        className="input w-full"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Indirizzo
                       </label>
                       <input
@@ -1757,12 +1864,12 @@ export const ComuneCatastoPage: React.FC = () => {
                         value={formData.indirizzo}
                         onChange={handleInputChange}
                         placeholder="Indirizzo"
-                        className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                        className="input w-full"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Città
                       </label>
                       <input
@@ -1771,7 +1878,7 @@ export const ComuneCatastoPage: React.FC = () => {
                         value={formData.citta}
                         onChange={handleInputChange}
                         placeholder="Città"
-                        className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                        className="input w-full"
                       />
                     </div>
                   </div>
@@ -1779,7 +1886,7 @@ export const ComuneCatastoPage: React.FC = () => {
                   {/* Seconda colonna */}
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Telefono
                       </label>
                       <input
@@ -1788,12 +1895,12 @@ export const ComuneCatastoPage: React.FC = () => {
                         value={formData.telefono}
                         onChange={handleInputChange}
                         placeholder="XXX XXX XXXX"
-                        className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                        className="input w-full"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Telefono 2
                       </label>
                       <input
@@ -1802,12 +1909,12 @@ export const ComuneCatastoPage: React.FC = () => {
                         value={formData.telefono2}
                         onChange={handleInputChange}
                         placeholder="XXX XXX XXXX"
-                        className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                        className="input w-full"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Email
                       </label>
                       <input
@@ -1816,12 +1923,12 @@ export const ComuneCatastoPage: React.FC = () => {
                         value={formData.mail}
                         onChange={handleInputChange}
                         placeholder="Indirizzo email"
-                        className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                        className="input w-full"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Tipo Incarico
                       </label>
                       <div className="relative">
@@ -1829,7 +1936,7 @@ export const ComuneCatastoPage: React.FC = () => {
                           name="tipo_incarico"
                           value={formData.tipo_incarico}
                           onChange={handleTipoIncaricoChange}
-                          className="input w-full pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                          className="input w-full pr-8 appearance-none"
                         >
                           <option value="">-- Seleziona tipo incarico --</option>
                           {tipiIncarico.map((tipo) => (
@@ -1838,12 +1945,12 @@ export const ComuneCatastoPage: React.FC = () => {
                             </option>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                        <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-400" />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Tipo Pratica
                       </label>
                       <div className="relative">
@@ -1851,7 +1958,7 @@ export const ComuneCatastoPage: React.FC = () => {
                           name="tipo_pratica"
                           value={formData.tipo_pratica}
                           onChange={handleInputChange}
-                          className="input w-full pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                          className="input w-full pr-8 appearance-none"
                         >
                           <option value="">-- Seleziona tipo pratica --</option>
                           {tipiPratica.map((tipo) => (
@@ -1860,12 +1967,12 @@ export const ComuneCatastoPage: React.FC = () => {
                             </option>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                        <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-400" />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Note
                       </label>
                       <textarea
@@ -1874,17 +1981,17 @@ export const ComuneCatastoPage: React.FC = () => {
                         onChange={handleInputChange}
                         placeholder="Note aggiuntive"
                         rows={4}
-                        className="input w-full resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                        className="input w-full resize-none"
                       />
                     </div>
 
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
-                        <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${!isFlagAbilitato('comune')
-                            ? 'opacity-30 cursor-not-allowed bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500 border-dashed'
+                        <label className={`flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-150 border-2 ${!isFlagAbilitato('comune')
+                            ? 'opacity-30 cursor-not-allowed bg-ink-100 border-ink-300 text-ink-400 border-dashed'
                             : formData.comune
-                              ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-500 text-purple-700 dark:text-purple-300 cursor-pointer'
-                              : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                              ? 'bg-signal-50 border-signal-500 text-signal-700 cursor-pointer'
+                              : 'bg-ink-50 border-ink-200 text-ink-600 hover:bg-ink-100 cursor-pointer'
                           }`}>
                           <input
                             type="checkbox"
@@ -1894,9 +2001,9 @@ export const ComuneCatastoPage: React.FC = () => {
                             disabled={!isFlagAbilitato('comune')}
                             className="sr-only"
                           />
-                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${formData.comune
-                              ? 'border-purple-500 bg-purple-500'
-                              : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${formData.comune
+                              ? 'border-signal-500 bg-signal-500'
+                              : 'border-ink-300 bg-transparent'
                             }`}>
                             {formData.comune && (
                               <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -1907,11 +2014,11 @@ export const ComuneCatastoPage: React.FC = () => {
                           <span className="text-sm font-medium">Comune</span>
                         </label>
 
-                        <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${!isFlagAbilitato('catasto')
-                            ? 'opacity-30 cursor-not-allowed bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500 border-dashed'
+                        <label className={`flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-150 border-2 ${!isFlagAbilitato('catasto')
+                            ? 'opacity-30 cursor-not-allowed bg-ink-100 border-ink-300 text-ink-400 border-dashed'
                             : formData.catasto
-                              ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 cursor-pointer'
-                              : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                              ? 'bg-info-50 border-info-500 text-info-700 cursor-pointer'
+                              : 'bg-ink-50 border-ink-200 text-ink-600 hover:bg-ink-100 cursor-pointer'
                           }`}>
                           <input
                             type="checkbox"
@@ -1921,9 +2028,9 @@ export const ComuneCatastoPage: React.FC = () => {
                             disabled={!isFlagAbilitato('catasto')}
                             className="sr-only"
                           />
-                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${formData.catasto
-                              ? 'border-indigo-500 bg-indigo-500'
-                              : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${formData.catasto
+                              ? 'border-info-500 bg-info-500'
+                              : 'border-ink-300 bg-transparent'
                             }`}>
                             {formData.catasto && (
                               <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -1936,11 +2043,11 @@ export const ComuneCatastoPage: React.FC = () => {
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
-                        <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${!isFlagAbilitato('fine_lavori')
-                            ? 'opacity-30 cursor-not-allowed bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500 border-dashed'
+                        <label className={`flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-150 border-2 ${!isFlagAbilitato('fine_lavori')
+                            ? 'opacity-30 cursor-not-allowed bg-ink-100 border-ink-300 text-ink-400 border-dashed'
                             : formData.fine_lavori
-                              ? 'bg-green-50 dark:bg-green-900/20 border-green-500 text-green-700 dark:text-green-300 cursor-pointer'
-                              : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                              ? 'bg-topo-50 border-topo-500 text-topo-700 cursor-pointer'
+                              : 'bg-ink-50 border-ink-200 text-ink-600 hover:bg-ink-100 cursor-pointer'
                           }`}>
                           <input
                             type="checkbox"
@@ -1950,9 +2057,9 @@ export const ComuneCatastoPage: React.FC = () => {
                             disabled={!isFlagAbilitato('fine_lavori')}
                             className="sr-only"
                           />
-                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${formData.fine_lavori
-                              ? 'border-green-500 bg-green-500'
-                              : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${formData.fine_lavori
+                              ? 'border-topo-500 bg-topo-500'
+                              : 'border-ink-300 bg-transparent'
                             }`}>
                             {formData.fine_lavori && (
                               <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -1963,43 +2070,97 @@ export const ComuneCatastoPage: React.FC = () => {
                           <span className="text-sm font-medium">Fine Lavori</span>
                         </label>
 
-                        <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${formData.pagamento
-                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300 cursor-pointer'
-                            : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <label className={`flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-150 border-2 ${formData.acconto
+                            ? 'bg-info-50 border-info-500 text-info-700 cursor-pointer'
+                            : formData.saldo
+                            ? 'bg-ink-50 border-ink-200 text-ink-400 cursor-not-allowed opacity-50'
+                            : 'bg-ink-50 border-ink-200 text-ink-600 hover:bg-ink-100 cursor-pointer'
                           }`}>
                           <input
                             type="checkbox"
-                            name="pagamento"
-                            checked={formData.pagamento}
+                            name="acconto"
+                            checked={formData.acconto}
                             onChange={handleInputChange}
+                            disabled={formData.saldo}
                             className="sr-only"
                           />
-                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${formData.pagamento
-                              ? 'border-blue-500 bg-blue-500'
-                              : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${formData.acconto
+                              ? 'border-info-500 bg-info-500'
+                              : 'border-ink-300 bg-transparent'
                             }`}>
-                            {formData.pagamento && (
+                            {formData.acconto && (
                               <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                               </svg>
                             )}
                           </div>
-                          <span className="text-sm font-medium">Pagamento</span>
+                          <span className="text-sm font-medium">Acconto</span>
+                        </label>
+
+                        <label className={`flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-150 border-2 ${formData.saldo
+                            ? 'bg-topo-50 border-topo-500 text-topo-700 cursor-pointer'
+                            : 'bg-ink-50 border-ink-200 text-ink-600 hover:bg-ink-100 cursor-pointer'
+                          }`}>
+                          <input
+                            type="checkbox"
+                            name="saldo"
+                            checked={formData.saldo}
+                            onChange={handleSaldoChange}
+                            className="sr-only"
+                          />
+                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${formData.saldo
+                              ? 'border-topo-500 bg-topo-500'
+                              : 'border-ink-300 bg-transparent'
+                            }`}>
+                            {formData.saldo && (
+                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
+                          <span className="text-sm font-medium">Saldo</span>
+                        </label>
+
+                        <label className={`flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-150 border-2 ${formData.omaggio
+                            ? 'bg-warning-50 border-warning-500 text-warning-700 cursor-pointer'
+                            : 'bg-ink-50 border-ink-200 text-ink-600 hover:bg-ink-100 cursor-pointer'
+                          }`}>
+                          <input
+                            type="checkbox"
+                            name="omaggio"
+                            checked={formData.omaggio}
+                            onChange={handleInputChange}
+                            className="sr-only"
+                          />
+                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${formData.omaggio
+                              ? 'border-warning-500 bg-warning-500'
+                              : 'border-ink-300 bg-transparent'
+                            }`}>
+                            {formData.omaggio && (
+                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
+                          <span className="text-sm font-medium">Omaggio</span>
                         </label>
                       </div>
                     </div>
                   </div>
                 </div>
-
-                <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                
+                <div className="flex items-center justify-between mt-6 pt-4 border-t border-ink-200">
+                  <div className="text-sm text-ink-500">
                     <p>* Campo obbligatorio</p>
                     <p className="mt-1">
-                      <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg dark:bg-gray-600 dark:text-gray-100 dark:border-gray-500">
+                      <kbd className="px-2 py-1 text-xs font-semibold text-ink-600 bg-ink-100 border border-ink-200 rounded-md">
                         {navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}
                       </kbd>
                       {' + '}
-                      <kbd className="px-2 py-1 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg dark:bg-gray-600 dark:text-gray-100 dark:border-gray-500">
+                      <kbd className="px-2 py-1 text-xs font-semibold text-ink-600 bg-ink-100 border border-ink-200 rounded-md">
                         Invio
                       </kbd>
                       {' per salvare'}
@@ -2010,14 +2171,14 @@ export const ComuneCatastoPage: React.FC = () => {
                       type="button"
                       onClick={closeModal}
                       disabled={submitting}
-                      className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="btn btn-ghost"
                     >
                       Annulla
                     </button>
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="btn btn-primary"
                     >
                       {submitting ? (
                         <div className="flex items-center gap-2">
@@ -2041,37 +2202,37 @@ export const ComuneCatastoPage: React.FC = () => {
         <ContextMenu x={contextMenu.x} y={contextMenu.y}>
           <button
             onClick={() => handleContextMenuAction('edit', contextMenu.pratica!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <Edit className="w-4 h-4 text-blue-500" />
+            <Edit className="w-4 h-4 text-signal-500" />
             Modifica
           </button>
           <button
             onClick={() => handleContextMenuAction('status', contextMenu.pratica!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <ArrowRightCircle className="w-4 h-4 text-yellow-500" />
+            <ArrowRightCircle className="w-4 h-4 text-warning-500" />
             Cambia stato
           </button>
           <button
             onClick={() => handleContextMenuAction('contact', contextMenu.pratica!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <User className="w-4 h-4 text-purple-500" />
+            <User className="w-4 h-4 text-info-500" />
             Contatto
           </button>
-          <div className="my-1 border-t border-gray-200 dark:border-gray-600" />
+          <div className="context-menu-separator" />
           <button
             onClick={() => handleContextMenuAction('duplicate', contextMenu.pratica!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <Copy className="w-4 h-4 text-green-500" />
+            <Copy className="w-4 h-4 text-topo-500" />
             Duplica
           </button>
-          <div className="my-1 border-t border-gray-200 dark:border-gray-600" />
+          <div className="context-menu-separator" />
           <button
             onClick={() => handleContextMenuAction('delete', contextMenu.pratica!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item context-menu-danger"
           >
             <Trash2 className="w-4 h-4" />
             Elimina
@@ -2081,37 +2242,43 @@ export const ComuneCatastoPage: React.FC = () => {
 
       {/* Modal Cambia Stato da Menu Contestuale */}
       {showContextMenuActionModal === 'status' && selectedPraticaForContextMenu && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Cambia Stato - {selectedPraticaForContextMenu.committente}
-            </h3>
-            <select
-              value={newStatusForContextMenu}
-              onChange={(e) => setNewStatusForContextMenu(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Seleziona stato</option>
-              {stati.map((stato) => (
-                <option key={stato.id} value={stato.id}>
-                  {stato.descrizione}
-                </option>
-              ))}
-            </select>
-            <div className="flex justify-end gap-2 mt-4">
+        <div className="modal-overlay">
+          <div className="modal w-full max-w-sm">
+            <div className="modal-header">
+              <h3 className="text-lg font-display font-semibold text-ink-700">
+                Cambia Stato - {selectedPraticaForContextMenu.committente}
+              </h3>
+            </div>
+            <div className="modal-body">
+              <select
+                value={newStatusForContextMenu}
+                onChange={(e) => setNewStatusForContextMenu(e.target.value)}
+                className="input w-full"
+              >
+                <option value="">Seleziona stato</option>
+                {stati.map((stato) => (
+                  <option key={stato.id} value={stato.id}>
+                    {stato.descrizione}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="modal-footer">
               <button
+                type="button"
                 onClick={() => {
                   setShowContextMenuActionModal(null);
                   setSelectedPraticaForContextMenu(null);
                 }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                className="btn btn-ghost"
               >
                 Annulla
               </button>
               <button
+                type="button"
                 onClick={handleChangeStatusFromContextMenu}
                 disabled={!newStatusForContextMenu}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn btn-primary"
               >
                 Conferma
               </button>
@@ -2122,38 +2289,43 @@ export const ComuneCatastoPage: React.FC = () => {
 
       {/* Modal Contatto da Menu Contestuale */}
       {showContextMenuActionModal === 'contatto' && selectedPraticaForContextMenu && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Contatto - {selectedPraticaForContextMenu.committente}
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proprietario</label>
-                <p className="text-gray-900 dark:text-white">{selectedPraticaForContextMenu.proprieta || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Telefono</label>
-                <p className="text-gray-900 dark:text-white">{selectedPraticaForContextMenu.telefono || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-                <p className="text-gray-900 dark:text-white">{selectedPraticaForContextMenu.mail || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Indirizzo</label>
-                <p className="text-gray-900 dark:text-white">
-                  {selectedPraticaForContextMenu.indirizzo || '-'}{selectedPraticaForContextMenu.citta ? `, ${selectedPraticaForContextMenu.citta}` : ''}
-                </p>
+        <div className="modal-overlay">
+          <div className="modal w-full max-w-md">
+            <div className="modal-header">
+              <h3 className="text-lg font-display font-semibold text-ink-700">
+                Contatto - {selectedPraticaForContextMenu.committente}
+              </h3>
+            </div>
+            <div className="modal-body">
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">Proprietario</label>
+                  <p className="text-ink-700">{selectedPraticaForContextMenu.proprieta || '-'}</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">Telefono</label>
+                  <p className="text-ink-700 font-mono">{selectedPraticaForContextMenu.telefono || '-'}</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">Email</label>
+                  <p className="text-ink-700">{selectedPraticaForContextMenu.mail || '-'}</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">Indirizzo</label>
+                  <p className="text-ink-700">
+                    {selectedPraticaForContextMenu.indirizzo || '-'}{selectedPraticaForContextMenu.citta ? `, ${selectedPraticaForContextMenu.citta}` : ''}
+                  </p>
+                </div>
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-6">
+            <div className="modal-footer">
               <button
+                type="button"
                 onClick={() => {
                   setShowContextMenuActionModal(null);
                   setSelectedPraticaForContextMenu(null);
                 }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                className="btn btn-ghost"
               >
                 Chiudi
               </button>

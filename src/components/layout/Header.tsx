@@ -1,19 +1,49 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Menu, User, LogOut, Settings, Moon, Sun } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Menu, User, LogOut, Settings, Moon, Sun, Search, Bell, ChevronRight } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 
 interface HeaderProps {
   onMenuClick: () => void;
+  onSearchClick: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
+const pageTitles: Record<string, string> = {
+  '/': 'Dashboard',
+  '/planner': 'Planner',
+  '/comune-catasto': 'Comune e Catasto',
+  '/ape': 'APE',
+  '/varie': 'Varie',
+  '/contabilita': 'Contabilità',
+  '/fatture-non-contabilizzate': 'Fatture non contabili',
+  '/spese': 'Spese',
+  '/rubrica': 'Rubrica',
+  '/parametri': 'Parametri',
+  '/user-settings': 'Impostazioni',
+};
+
+export const Header: React.FC<HeaderProps> = ({ onMenuClick, onSearchClick }: HeaderProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const currentPage = pageTitles[location.pathname] || 'Dashboard';
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
   const { user, signOut } = useAuthStore();
   const { isDark, toggleTheme } = useThemeStore();
+
+  // Keyboard shortcut for Cmd+K / Ctrl+K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        onSearchClick();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onSearchClick]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -22,10 +52,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
 
   const handleUserMenuToggle = () => {
     if (userMenuOpen) {
-      // Start fade out animation
       setIsAnimatingOut(true);
     } else {
-      // Open menu
       setUserMenuOpen(true);
       setIsAnimatingOut(false);
     }
@@ -36,104 +64,130 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
       const timer = setTimeout(() => {
         setUserMenuOpen(false);
         setIsAnimatingOut(false);
-      }, 200); // Match animation duration
-
+      }, 150);
       return () => clearTimeout(timer);
     }
   }, [isAnimatingOut]);
 
   return (
-    <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-3 py-2 transition-colors min-h-[3.5rem] max-h-[3.5rem]">
-      <div className="flex items-center justify-between h-full">
-        {/* Left Side */}
-        <div className="flex items-center gap-2 min-w-0 flex-shrink">
-          {/* Mobile Menu Button */}
-          <button
-            onClick={onMenuClick}
-            className="lg:hidden p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
-          >
-            <Menu className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-          </button>
-          
-          {/* Page Title */}
-          <div className="hidden sm:block min-w-0">
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
-              Smart-Geo
-            </h1>
-          </div>
+    <header className="h-topbar bg-white border-b border-ink-200 px-4 flex items-center justify-between flex-shrink-0">
+      {/* Left Side */}
+      <div className="flex items-center gap-3">
+        {/* Mobile Menu Button */}
+        <button
+          onClick={onMenuClick}
+          className="lg:hidden p-2 rounded-md text-ink-500 hover:text-ink-700 hover:bg-ink-100 transition-colors"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        
+        {/* Breadcrumb */}
+        <div className="hidden sm:flex items-center gap-2 text-sm text-ink-500">
+          <span className="text-ink-400">Home</span>
+          <ChevronRight className="w-4 h-4 text-ink-300" />
+          <span className="text-ink-700 font-medium">{currentPage}</span>
         </div>
+      </div>
 
-        {/* Right Side */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Notifications */}
-          
-          {/* User Menu */}
-          <div className="relative">
-            <button
-              onClick={handleUserMenuToggle}
-              className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors max-w-[200px]"
-            >
-              <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
-                <User className="w-3 h-3 text-white" />
+      {/* Center - Search Button */}
+      <button
+        onClick={onSearchClick}
+        className="hidden md:flex items-center gap-2 px-4 py-2 bg-ink-50 border border-ink-200 rounded-lg text-sm text-ink-400 hover:bg-ink-100 hover:border-ink-300 transition-all min-w-[280px]"
+      >
+        <Search className="w-4 h-4" />
+        <span className="flex-1 text-left">Cerca...</span>
+        <kbd className="hidden lg:inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-ink-200 rounded text-xs font-mono text-ink-500">
+          <span className="text-xs">⌘</span>K
+        </kbd>
+      </button>
+
+      {/* Right Side */}
+      <div className="flex items-center gap-2">
+        {/* Mobile Search */}
+        <button
+          onClick={onSearchClick}
+          className="md:hidden p-2 rounded-md text-ink-500 hover:text-ink-700 hover:bg-ink-100 transition-colors"
+        >
+          <Search className="w-5 h-5" />
+        </button>
+
+        {/* Notifications */}
+        <button className="relative p-2 rounded-md text-ink-500 hover:text-ink-700 hover:bg-ink-100 transition-colors">
+          <Bell className="w-5 h-5" />
+          <span className="absolute top-1 right-1 w-2 h-2 bg-signal-500 rounded-full" />
+        </button>
+
+        {/* Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-md text-ink-500 hover:text-ink-700 hover:bg-ink-100 transition-colors"
+        >
+          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+        </button>
+
+        {/* User Menu */}
+        <div className="relative">
+          <button
+            onClick={handleUserMenuToggle}
+            className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-ink-100 transition-colors"
+          >
+            <div className="w-8 h-8 bg-signal-500 rounded-full flex items-center justify-center">
+              <User className="w-4 h-4 text-white" />
+            </div>
+            <div className="hidden lg:block text-left">
+              <div className="text-sm font-medium text-ink-700">
+                {user?.name || user?.username || 'Utente'}
               </div>
-              <div className="hidden lg:block text-left min-w-0">
-                <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                  {user?.name || user?.username || 'Utente'} {user?.surname ? user?.surname.charAt(0).toUpperCase() + user?.surname.slice(1) : ''}
+            </div>
+          </button>
+
+          {/* Dropdown Menu */}
+          {userMenuOpen && (
+            <>
+              <div 
+                className="fixed inset-0 z-10"
+                onClick={handleUserMenuToggle}
+              />
+              <div className={`absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-ink-200 py-1 z-20 ${
+                isAnimatingOut ? 'animate-fade-out-up' : 'animate-fade-in-down'
+              }`}>
+                <div className="px-4 py-3 border-b border-ink-100">
+                  <div className="text-sm font-medium text-ink-700">
+                    {user?.name || user?.username || 'Utente'}
+                  </div>
+                  <div className="text-xs text-ink-500">
+                    {user?.email || ''}
+                  </div>
                 </div>
-              </div>
-            </button>
-
-            {/* Dropdown Menu */}
-            {userMenuOpen && (
-              <>
-                {/* Backdrop */}
-                <div 
-                  className="fixed inset-0 z-10"
-                  onClick={handleUserMenuToggle}
-                />
                 
-                {/* Menu */}
-                <div className={`absolute right-0 mt-1 w-52 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-20 ${
-                  isAnimatingOut ? 'animate-fade-out-up' : 'animate-fade-in-down'
-                }`}>
-                  <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
-                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                      {user?.name || user?.username || 'Utente'} {user?.surname ? user?.surname.charAt(0).toUpperCase() + user?.surname.slice(1) : ''}
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                      {user?.email || ''}
-                    </div>
-                  </div>
+                <div className="py-1">
+                  <button 
+                    onClick={toggleTheme}
+                    className="flex items-center gap-3 w-full px-4 py-2 text-sm text-ink-600 hover:bg-ink-50 transition-colors"
+                  >
+                    {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                    {isDark ? 'Modalità chiara' : 'Modalità scura'}
+                  </button>
                   
-                  <div className="py-1">
-                    <button 
-                      onClick={toggleTheme}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-                      {isDark ? 'Modalità chiara' : 'Modalità scura'}
-                    </button>
-                    
-                    <button
-                      onClick={() => navigate('/user-settings')}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <Settings className="w-3.5 h-3.5" />
-                      Impostazioni
-                    </button>
-                    
-                    <button 
-                      onClick={handleSignOut}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                    >
-                      <LogOut className="w-3.5 h-3.5" />
-                      Disconnetti
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => navigate('/user-settings')}
+                    className="flex items-center gap-3 w-full px-4 py-2 text-sm text-ink-600 hover:bg-ink-50 transition-colors"
+                  >
+                    <Settings className="w-4 h-4" />
+                    Impostazioni
+                  </button>
+                  
+                  <button 
+                    onClick={handleSignOut}
+                    className="flex items-center gap-3 w-full px-4 py-2 text-sm text-error-500 hover:bg-error-50 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Disconnetti
+                  </button>
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </header>

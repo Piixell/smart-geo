@@ -11,8 +11,7 @@ import {
   FolderOpen,
   Users,
   Settings,
-  MapPin,
-  ChevronRight
+  X
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -25,213 +24,198 @@ interface MenuItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   path: string;
-  category: string;
+  category: 'navigazione' | 'strumenti' | 'impostazioni';
 }
 
 const menuItems: MenuItem[] = [
+  // Navigazione principale
   {
     label: 'Dashboard',
     icon: Home,
     path: '/',
-    category: 'main'
+    category: 'navigazione'
   },
   {
     label: 'Planner',
     icon: Calendar,
     path: '/planner',
-    category: 'gestione'
-  },
-  {
-    label: 'Contabilità',
-    icon: Calculator,
-    path: '/contabilita',
-    category: 'gestione'
-  },
-  {
-    label: 'Fatture non contabilizzate',
-    icon: FileText,
-    path: '/fatture-non-contabilizzate',
-    category: 'gestione'
-  },
-  {
-    label: 'Spese',
-    icon: CreditCard,
-    path: '/spese',
-    category: 'gestione'
+    category: 'navigazione'
   },
   {
     label: 'Comune e Catasto',
     icon: Building2,
     path: '/comune-catasto',
-    category: 'gestione'
+    category: 'navigazione'
   },
   {
     label: 'APE',
     icon: FileCheck,
     path: '/ape',
-    category: 'gestione'
+    category: 'navigazione'
   },
   {
     label: 'Varie',
     icon: FolderOpen,
     path: '/varie',
-    category: 'gestione'
+    category: 'navigazione'
+  },
+  // Strumenti
+  {
+    label: 'Contabilità',
+    icon: Calculator,
+    path: '/contabilita',
+    category: 'strumenti'
+  },
+  {
+    label: 'Fatture non contabili',
+    icon: FileText,
+    path: '/fatture-non-contabilizzate',
+    category: 'strumenti'
+  },
+  {
+    label: 'Spese',
+    icon: CreditCard,
+    path: '/spese',
+    category: 'strumenti'
   },
   {
     label: 'Rubrica',
     icon: Users,
     path: '/rubrica',
-    category: 'gestione'
+    category: 'strumenti'
   },
+  // Impostazioni
   {
     label: 'Parametri',
     icon: Settings,
     path: '/parametri',
-    category: 'settings'
+    category: 'impostazioni'
   }
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }: SidebarProps) => {
   const location = useLocation();
 
-  const gestioneItems = menuItems.filter(item => item.category === 'gestione');
-  const mainItems = menuItems.filter(item => item.category === 'main');
-  const settingsItems = menuItems.filter(item => item.category === 'settings');
+  const navigazioneItems = menuItems.filter(item => item.category === 'navigazione');
+  const strumentiItems = menuItems.filter(item => item.category === 'strumenti');
+  const impostazioniItems = menuItems.filter(item => item.category === 'impostazioni');
+
+  const isActive = (path: string) => {
+    if (path === '/') {
+      return location.pathname === '/';
+    }
+    return location.pathname.startsWith(path);
+  };
+
+  const NavItem = ({ item }: { item: MenuItem }) => (
+    <NavLink
+      to={item.path}
+      onClick={onClose}
+      className={clsx(
+        'sidebar-item group relative',
+        isActive(item.path) && 'sidebar-item-active'
+      )}
+    >
+      {isActive(item.path) && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-signal-500 rounded-r" />
+      )}
+      <item.icon className={clsx(
+        'w-5 h-5 flex-shrink-0',
+        isActive(item.path) ? 'text-signal-500' : 'text-ink-400 group-hover:text-white'
+      )} />
+      <span className="sidebar-label truncate">{item.label}</span>
+    </NavLink>
+  );
 
   return (
     <>
-      {/* Overlay per mobile */}
+      {/* Mobile backdrop */}
       {isOpen && (
         <div 
-          className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 bg-ink-900/50 z-30 lg:hidden"
           onClick={onClose}
         />
       )}
 
       {/* Sidebar */}
-      <div className={clsx(
-        'fixed inset-y-0 left-0 z-30 w-72 bg-slate-50 dark:bg-slate-900 border-r border-slate-200/60 dark:border-slate-700/60 transform transition-all duration-300 ease-in-out flex flex-col backdrop-blur-xl',
-        'lg:translate-x-0 lg:static lg:inset-0',
-        isOpen ? 'translate-x-0' : '-translate-x-full'
+      <aside className={clsx(
+        'fixed inset-y-0 left-0 z-40 flex flex-col bg-ink-800 transition-all duration-200',
+        'w-sidebar lg:relative',
+        isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}>
-        {/* Header */}
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-blue-600 dark:bg-blue-700"></div>
-          <div className="relative flex items-center justify-between p-4 text-white">
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 bg-white/20 backdrop-blur-sm rounded-lg border border-white/30">
-                <MapPin className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-lg font-bold tracking-tight">Smart-Geo</span>
-                <div className="text-xs opacity-90 font-medium">Gestione Professionale</div>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="lg:hidden p-1.5 rounded-lg bg-white/10 backdrop-blur-sm border border-white/20 hover:bg-white/20 transition-all duration-200"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        {/* Logo */}
+        <div className="flex items-center justify-between h-topbar px-4 border-b border-ink-700">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-md bg-signal-500 flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 22h20L12 2zm0 4l7 14H5l7-14z"/>
+                <circle cx="12" cy="14" r="2"/>
               </svg>
-            </button>
+            </div>
+            <span className="font-display text-lg font-bold text-white tracking-tight">
+              SMART-GEO
+            </span>
           </div>
+          <button
+            onClick={onClose}
+            className="lg:hidden p-1 rounded-md text-ink-400 hover:text-white hover:bg-ink-700 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 flex flex-col p-3 space-y-4">
-          {/* Main Items */}
+        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+          {/* Navigazione */}
           <div>
-            {mainItems.map((item) => (
-              <SidebarItem
-                key={item.path}
-                item={item}
-                isActive={location.pathname === item.path}
-                onClose={onClose}
-              />
-            ))}
-          </div>
-
-          {/* Gestione Section */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 px-2">
-              <div className="h-px bg-slate-300 dark:bg-slate-600 flex-1"></div>
-              <span className="text-xs uppercase text-slate-500 dark:text-slate-400 font-bold tracking-wider bg-slate-200/50 dark:bg-slate-700/50 px-2 py-0.5 rounded-full border border-slate-300/50 dark:border-slate-600/50">
-                Gestione
+            <div className="px-3 mb-2">
+              <span className="text-xs font-medium text-ink-500 uppercase tracking-wider">
+                Navigazione
               </span>
-              <div className="h-px bg-slate-300 dark:bg-slate-600 flex-1"></div>
             </div>
-            <div className="space-y-0.5">
-              {gestioneItems.map((item) => (
-                <SidebarItem
-                  key={item.path}
-                  item={item}
-                  isActive={location.pathname === item.path}
-                  onClose={onClose}
-                />
+            <div className="space-y-1">
+              {navigazioneItems.map(item => (
+                <NavItem key={item.path} item={item} />
               ))}
             </div>
           </div>
 
-          {/* Settings - Posizionato al fondo */}
-          <div className="mt-auto">
-            <div className="h-px bg-slate-300 dark:bg-slate-600 mb-4"></div>
-            {settingsItems.map((item) => (
-              <SidebarItem
-                key={item.path}
-                item={item}
-                isActive={location.pathname === item.path}
-                onClose={onClose}
-              />
-            ))}
+          {/* Strumenti */}
+          <div>
+            <div className="px-3 mb-2">
+              <span className="text-xs font-medium text-ink-500 uppercase tracking-wider">
+                Strumenti
+              </span>
+            </div>
+            <div className="space-y-1">
+              {strumentiItems.map(item => (
+                <NavItem key={item.path} item={item} />
+              ))}
+            </div>
+          </div>
+
+          {/* Impostazioni */}
+          <div>
+            <div className="px-3 mb-2">
+              <span className="text-xs font-medium text-ink-500 uppercase tracking-wider">
+                Impostazioni
+              </span>
+            </div>
+            <div className="space-y-1">
+              {impostazioniItems.map(item => (
+                <NavItem key={item.path} item={item} />
+              ))}
+            </div>
           </div>
         </nav>
-      </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-ink-700">
+          <div className="text-xs text-ink-500 text-center">
+            · Smart-Geo ·
+          </div>
+        </div>
+      </aside>
     </>
   );
 };
-
-interface SidebarItemProps {
-  item: MenuItem;
-  isActive: boolean;
-  onClose: () => void;
-}
-
-const SidebarItem: React.FC<SidebarItemProps> = ({ item, isActive, onClose }: SidebarItemProps) => {
-  const { label, icon: Icon, path } = item;
-
-  return (
-    <NavLink
-      to={path}
-      onClick={onClose}
-      className={clsx(
-        'group flex items-center justify-between px-3 py-2 rounded-xl transition-all duration-300 ease-out relative overflow-hidden',
-        isActive 
-          ? 'bg-blue-600 dark:bg-blue-700 text-white shadow-lg shadow-blue-500/25 dark:shadow-blue-400/20 transform scale-[1.02]' 
-          : 'text-slate-700 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-700/60 hover:shadow-md hover:shadow-slate-200/50 dark:hover:shadow-slate-800/50 hover:scale-[1.01] backdrop-blur-sm'
-      )}
-    >
-      <div className="flex items-center space-x-2.5 relative z-10">
-        <div className={clsx(
-          'p-1.5 rounded-lg transition-all duration-300',
-          isActive 
-            ? 'bg-white/20 backdrop-blur-sm' 
-            : 'bg-slate-200/50 dark:bg-slate-700/50 group-hover:bg-slate-300/60 dark:group-hover:bg-slate-600/60'
-        )}>
-          <Icon className="w-4 h-4 flex-shrink-0" />
-        </div>
-        <span className="font-medium text-sm tracking-wide">{label}</span>
-      </div>
-      
-      {/* Indicatore freccia per item attivo */}
-      {isActive && (
-        <ChevronRight className="w-3.5 h-3.5 opacity-80" />
-      )}
-      
-      {/* Effetto glow per item attivo */}
-      {isActive && (
-        <div className="absolute inset-0 bg-blue-400/20 rounded-xl blur-xl"></div>
-      )}
-    </NavLink>
-  );
-}; 

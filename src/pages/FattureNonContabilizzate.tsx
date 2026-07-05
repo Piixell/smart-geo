@@ -78,9 +78,7 @@ export const FattureNonContabilizzate: React.FC = () => {
       let dataQuery = supabase
         .from('fatture_non_contabilizzate')
         .select('*')
-        .eq('user_id', user?.id)
-        .order('data_creazione', { ascending: false })
-        .range((currentPage - 1) * recordsPerPage, currentPage * recordsPerPage - 1);
+        .eq('user_id', user?.id);
 
       // Applica filtri
       if (filtroProprietario) {
@@ -120,12 +118,28 @@ export const FattureNonContabilizzate: React.FC = () => {
         return;
       }
 
-      setFatture(data || []);
+      // Ordina per data_emissione desc
+      const sortedData = (data || []).sort((a, b) => {
+        const aDate = a.data_emissione ? new Date(a.data_emissione) : new Date(0);
+        const bDate = b.data_emissione ? new Date(b.data_emissione) : new Date(0);
+        const yearDiff = bDate.getFullYear() - aDate.getFullYear();
+        if (yearDiff !== 0) return yearDiff;
+        const monthDiff = bDate.getMonth() - aDate.getMonth();
+        if (monthDiff !== 0) return monthDiff;
+        return bDate.getDate() - aDate.getDate();
+      });
+
+      // Applica paginazione in JavaScript
+      const start = (currentPage - 1) * recordsPerPage;
+      const end = start + recordsPerPage;
+      const paginatedData = sortedData.slice(start, end);
+
+      setFatture(paginatedData);
       setTotalRecords(count || 0);
       
-      // Calcola i totali
-      const totaleTotale = (data || []).reduce((sum, fattura) => sum + fattura.totale, 0);
-      const totaleSpese = (data || []).reduce((sum, fattura) => sum + fattura.spese, 0);
+      // Calcola i totali (su tutti i dati filtrati, non solo la pagina corrente)
+      const totaleTotale = sortedData.reduce((sum, fattura) => sum + fattura.totale, 0);
+      const totaleSpese = sortedData.reduce((sum, fattura) => sum + fattura.spese, 0);
       const totaleNetProfit = totaleTotale - totaleSpese;
 
       setTotals({
@@ -324,7 +338,7 @@ export const FattureNonContabilizzate: React.FC = () => {
   const totalPages = Math.ceil(totalRecords / recordsPerPage);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -497,40 +511,109 @@ export const FattureNonContabilizzate: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                fatture.map((fattura) => (
-                  <tr key={fattura.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                      {formatDate(fattura.data_emissione)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600 dark:text-blue-400">
-                      {formatCurrency(fattura.totale)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600 dark:text-red-400">
-                      {formatCurrency(fattura.spese)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600 dark:text-green-400">
-                      {formatCurrency(fattura.totale - fattura.spese)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => openModal(fattura)}
-                          className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
-                          title="Modifica"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteFattura(fattura.id)}
-                          className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 transition-colors"
-                          title="Elimina"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                (() => {
+                  const monthlyTotals: Record<string, { totale: number; spese: number; netProfit: number; count: number }> = {};
+                  fatture.forEach(f => {
+                    const d = f.data_emissione ? new Date(f.data_emissione) : null;
+                    const m = d ? mesi[d.getMonth()] : '';
+                    const a = d ? d.getFullYear() : 0;
+                    const key = `${m}-${a}`;
+                    if (!monthlyTotals[key]) {
+                      monthlyTotals[key] = { totale: 0, spese: 0, netProfit: 0, count: 0 };
+                    }
+                    const t = monthlyTotals[key];
+                    t.totale += f.totale;
+                    t.spese += f.spese;
+                    t.netProfit += (f.totale - f.spese);
+                    t.count++;
+                  });
+
+                  const rows: React.ReactNode[] = [];
+                  fatture.forEach((fattura, index) => {
+                    const d = fattura.data_emissione ? new Date(fattura.data_emissione) : null;
+                    const m = d ? mesi[d.getMonth()] : '';
+                    const a = d ? d.getFullYear() : 0;
+
+                    const prevFattura = index > 0 ? fatture[index - 1] : null;
+                    const prevD = prevFattura?.data_emissione ? new Date(prevFattura.data_emissione) : null;
+                    const prevM = prevD ? mesi[prevD.getMonth()] : '';
+                    const prevA = prevD ? prevD.getFullYear() : 0;
+                    const showSeparator = prevFattura && (prevM !== m || prevA !== a);
+
+                    const nextFattura = index < fatture.length - 1 ? fatture[index + 1] : null;
+                    const nextD = nextFattura?.data_emissione ? new Date(nextFattura.data_emissione) : null;
+                    const nextM = nextD ? mesi[nextD.getMonth()] : '';
+                    const nextA = nextD ? nextD.getFullYear() : 0;
+                    const isLastInMonth = !nextFattura || nextM !== m || nextA !== a;
+
+                    const monthKey = `${m}-${a}`;
+                    const mTotals = monthlyTotals[monthKey];
+
+                    rows.push(
+                      <React.Fragment key={fattura.id}>
+                        {showSeparator && (
+                          <tr className="bg-gray-100 dark:bg-gray-700">
+                            <td colSpan={5} className="px-6 py-2">
+                              <div className="border-t border-gray-300 dark:border-gray-500"></div>
+                            </td>
+                          </tr>
+                        )}
+                        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                            {formatDate(fattura.data_emissione)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-600 dark:text-blue-400">
+                            {formatCurrency(fattura.totale)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600 dark:text-red-400">
+                            {formatCurrency(fattura.spese)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600 dark:text-green-400">
+                            {formatCurrency(fattura.totale - fattura.spese)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => openModal(fattura)}
+                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
+                                title="Modifica"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteFattura(fattura.id)}
+                                className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 transition-colors"
+                                title="Elimina"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {isLastInMonth && (
+                          <tr className="bg-blue-50 dark:bg-gray-600 border-t border-gray-300 dark:border-gray-500">
+                            <td className="px-6 py-3 text-sm font-bold text-gray-900 dark:text-white">
+                              Totale {m} {a}
+                            </td>
+                            <td className="px-6 py-3 text-sm font-bold text-gray-900 dark:text-gray-100">
+                              {formatCurrency(mTotals.totale)}
+                            </td>
+                            <td className="px-6 py-3 text-sm font-bold text-gray-900 dark:text-gray-100">
+                              {formatCurrency(mTotals.spese)}
+                            </td>
+                            <td className="px-6 py-3 text-sm font-bold text-gray-900 dark:text-gray-100">
+                              {formatCurrency(mTotals.netProfit)}
+                            </td>
+                            <td className="px-6 py-3 text-xs text-gray-900 dark:text-gray-100">
+                              {mTotals.count} {mTotals.count === 1 ? 'fattura' : 'fatture'}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  });
+                  return rows;
+                })()
               )}
             </tbody>
             {/* Totalizzatore */}

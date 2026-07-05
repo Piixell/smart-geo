@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Plus, Search, ChevronDown, Edit, Trash2, Check, X, Copy, ArrowRightCircle, User } from 'lucide-react';
+import { Plus, ChevronDown, Edit, Trash2, Check, X, Copy, ArrowRightCircle, User, Search } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/authStore';
 import { RubricaAutocomplete } from '../components/RubricaAutocomplete';
@@ -8,15 +7,6 @@ import { syncRubricaFromPratica } from '../utils/rubricaSync';
 import { ContextMenu } from '../components/ContextMenu';
 import type { Varie, StatoGenerale, TipoIncarico, Rubrica } from '../types';
 import toast from 'react-hot-toast';
-
-const useDebounce = (value: string, delay: number) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
-};
 
 const TriStateFilter = ({ value, onChange }: {
   value: 'all' | 'yes' | 'no';
@@ -28,58 +18,68 @@ const TriStateFilter = ({ value, onChange }: {
       title="Tutti"
       className={`p-1 rounded transition-all ${
         value === 'all'
-          ? 'bg-gray-200 dark:bg-gray-600 shadow-sm'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700 opacity-50 hover:opacity-100'
+          ? 'bg-gray-200 shadow-sm'
+          : 'hover:bg-gray-100 opacity-50 hover:opacity-100'
       }`}
     >
-      <div className="w-2.5 h-0.5 bg-gray-400 dark:bg-gray-500 rounded" />
+      <div className="w-2.5 h-0.5 bg-gray-400 rounded" />
     </button>
     <button
       onClick={() => onChange('yes')}
       title="Si"
       className={`p-1 rounded transition-all ${
         value === 'yes'
-          ? 'bg-gray-200 dark:bg-gray-600 shadow-sm'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700 opacity-50 hover:opacity-100'
+          ? 'bg-gray-200 shadow-sm'
+          : 'hover:bg-gray-100 opacity-50 hover:opacity-100'
       }`}
     >
-      <Check className="w-3 h-3 text-green-600 dark:text-green-400" />
+      <Check className="w-3 h-3 text-green-600" />
     </button>
     <button
       onClick={() => onChange('no')}
       title="No"
       className={`p-1 rounded transition-all ${
         value === 'no'
-          ? 'bg-gray-200 dark:bg-gray-600 shadow-sm'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700 opacity-50 hover:opacity-100'
+          ? 'bg-gray-200 shadow-sm'
+          : 'hover:bg-gray-100 opacity-50 hover:opacity-100'
       }`}
     >
-      <X className="w-3 h-3 text-red-600 dark:text-red-400" />
+      <X className="w-3 h-3 text-red-600" />
     </button>
   </div>
 );
 
 export const VariePage: React.FC = () => {
-  const [searchParams] = useSearchParams();
   const [varie, setVarie] = useState<Varie[]>([]);
   const [stati, setStati] = useState<StatoGenerale[]>([]);
   const [tipiIncarico, setTipiIncarico] = useState<TipoIncarico[]>([]);
   const [loading, setLoading] = useState(true);
-  const [columnFilters, setColumnFilters] = useState<{
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
+const [columnFilters, setColumnFilters] = useState<{
     stato: string;
     tipo_incarico: string;
     committente: string;
     proprieta: string;
+    indirizzo: string;
+    citta: string;
     note: string;
+    acconto: 'all' | 'yes' | 'no';
+    saldo: 'all' | 'yes' | 'no';
   }>({
     stato: '',
     tipo_incarico: '',
     committente: '',
     proprieta: '',
-    note: ''
+    indirizzo: '',
+    citta: '',
+    note: '',
+    acconto: 'all',
+    saldo: 'all'
   });
-  const [filtriAttivi, setFiltriAttivi] = useState({
-    nonPagati: false
+  const [filtriAttivi, setFiltriAttivi] = useState<Record<string, boolean>>({});
+  const [presetFilters, setPresetFilters] = useState({
+    nonPagate: false
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(() => {
@@ -111,34 +111,14 @@ export const VariePage: React.FC = () => {
     mail: '',
     registrazione: '',
     tipo_incarico: '',
-    pagamento: false,
     acconto: false,
+    saldo: false,
     omaggio: false,
     note: ''
   });
   const { user, loading: authLoading } = useAuthStore();
 
-  const debouncedCommittente = useDebounce(columnFilters.committente, 300);
-  const debouncedProprieta = useDebounce(columnFilters.proprieta, 300);
-  const debouncedNote = useDebounce(columnFilters.note, 300);
-
-  const activeFilterCount = Object.values(columnFilters).filter(val => val !== '').length;
-
-  // Debounce effect: trigger fetch when debounced text values change
-  useEffect(() => {
-    if (user?.id) {
-      setColumnFilters(prev => {
-        const newFilters = {
-          ...prev,
-          committente: debouncedCommittente,
-          proprieta: debouncedProprieta,
-          note: debouncedNote
-        };
-        setTimeout(() => fetchData({ columnFilters: newFilters }), 0);
-        return newFilters;
-      });
-    }
-  }, [debouncedCommittente, debouncedProprieta, debouncedNote, user?.id]);
+  const activeFilterCount = Object.values(columnFilters).filter(val => val !== '' && val !== 'all').length + Object.values(presetFilters).filter(Boolean).length;
 
   // Protezione contro errori delle estensioni del browser
   useEffect(() => {
@@ -196,6 +176,7 @@ export const VariePage: React.FC = () => {
   const fetchData = async (customFilters?: {
     columnFilters?: typeof columnFilters;
     filtriAttivi?: typeof filtriAttivi;
+    presetFilters?: typeof presetFilters;
     page?: number;
     perPage?: number;
   }) => {
@@ -210,6 +191,7 @@ export const VariePage: React.FC = () => {
 
       const currentFilters = customFilters?.columnFilters ?? columnFilters;
       const currentFiltriAttivi = customFilters?.filtriAttivi ?? filtriAttivi;
+      const currentPresetFilters = customFilters?.presetFilters ?? presetFilters;
       const currentPageParam = customFilters?.page ?? currentPage;
       const currentPerPage = customFilters?.perPage ?? recordsPerPage;
 
@@ -219,6 +201,12 @@ export const VariePage: React.FC = () => {
       }
       if (currentFilters.proprieta.trim()) {
         searchParts.push(`proprieta.ilike.%${currentFilters.proprieta}%,proprieta2.ilike.%${currentFilters.proprieta}%`);
+      }
+      if (currentFilters.indirizzo.trim()) {
+        searchParts.push(`indirizzo.ilike.%${currentFilters.indirizzo}%`);
+      }
+      if (currentFilters.citta.trim()) {
+        searchParts.push(`citta.ilike.%${currentFilters.citta}%`);
       }
       if (currentFilters.note.trim()) {
         searchParts.push(`note.ilike.%${currentFilters.note}%`);
@@ -240,20 +228,27 @@ export const VariePage: React.FC = () => {
         countQuery = countQuery.eq('registrazione', parseInt(currentFilters.stato));
       }
 
-      let statiFiltroNonPagata: number[] = [];
-      if (currentFiltriAttivi.nonPagati) {
+      if (currentFilters.acconto === 'yes') {
+        countQuery = countQuery.eq('acconto', true);
+      } else if (currentFilters.acconto === 'no') {
+        countQuery = countQuery.eq('acconto', false);
+      }
+
+      if (currentFilters.saldo === 'yes') {
+        countQuery = countQuery.eq('saldo', true);
+      } else if (currentFilters.saldo === 'no') {
+        countQuery = countQuery.eq('saldo', false);
+      }
+
+      if (currentPresetFilters.nonPagate) {
         const { data: statiNonPagata } = await supabase
           .from('stati_generali')
           .select('id')
           .eq('filtro_non_pagata', 1);
-        statiFiltroNonPagata = (statiNonPagata || []).map((s: { id: number }) => s.id);
-      }
-
-      if (currentFiltriAttivi.nonPagati) {
-        if (statiFiltroNonPagata.length > 0) {
-          countQuery = countQuery.eq('pagamento', 0).in('registrazione', statiFiltroNonPagata);
-        } else {
-          countQuery = countQuery.eq('pagamento', 0);
+        const ids = (statiNonPagata || []).map(s => s.id);
+        countQuery = countQuery.eq('saldo', false);
+        if (ids.length > 0) {
+          countQuery = countQuery.in('registrazione', ids);
         }
       }
 
@@ -285,11 +280,27 @@ export const VariePage: React.FC = () => {
         query = query.eq('registrazione', parseInt(currentFilters.stato));
       }
 
-      if (currentFiltriAttivi.nonPagati) {
-        if (statiFiltroNonPagata.length > 0) {
-          query = query.eq('pagamento', 0).in('registrazione', statiFiltroNonPagata);
-        } else {
-          query = query.eq('pagamento', 0);
+      if (currentFilters.acconto === 'yes') {
+        query = query.eq('acconto', true);
+      } else if (currentFilters.acconto === 'no') {
+        query = query.eq('acconto', false);
+      }
+
+      if (currentFilters.saldo === 'yes') {
+        query = query.eq('saldo', true);
+      } else if (currentFilters.saldo === 'no') {
+        query = query.eq('saldo', false);
+      }
+
+      if (currentPresetFilters.nonPagate) {
+        const { data: statiNonPagata } = await supabase
+          .from('stati_generali')
+          .select('id')
+          .eq('filtro_non_pagata', 1);
+        const ids = (statiNonPagata || []).map(s => s.id);
+        query = query.eq('saldo', false);
+        if (ids.length > 0) {
+          query = query.in('registrazione', ids);
         }
       }
 
@@ -364,6 +375,103 @@ export const VariePage: React.FC = () => {
     initializeData();
   }, [user?.id, authLoading]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('varie-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'varie',
+          filter: `user_id=eq.${user.id}`
+        },
+        async (payload) => {
+          setLastUpdateTime(new Date());
+
+          if (payload.eventType === 'INSERT') {
+            const { data: newRecord, error } = await supabase
+              .from('varie')
+              .select(`
+                *,
+                registrazione_info:stati_generali(id, descrizione, colore)
+              `)
+              .eq('id', payload.new.id)
+              .single();
+
+            if (!error && newRecord) {
+              setVarie(prev => {
+                if (prev.some(v => v.id === newRecord.id)) {
+                  return prev;
+                }
+                return [newRecord, ...prev];
+              });
+              setTotalRecords(prev => prev + 1);
+              toast.success('Nuova varia aggiunta');
+            }
+          }
+          else if (payload.eventType === 'UPDATE') {
+            const { data: updatedRecord, error } = await supabase
+              .from('varie')
+              .select(`
+                *,
+                registrazione_info:stati_generali(id, descrizione, colore)
+              `)
+              .eq('id', payload.new.id)
+              .single();
+
+            if (!error && updatedRecord) {
+              setVarie(prev =>
+                prev.map(v =>
+                  v.id === updatedRecord.id ? updatedRecord : v
+                )
+              );
+
+              const oldVaria = payload.old as Varie;
+              const messaggiToast: string[] = [];
+
+              if (oldVaria.acconto !== updatedRecord.acconto) {
+                messaggiToast.push(updatedRecord.acconto ? 'Acconto marcato come ricevuto' : 'Acconto marcato come non ricevuto');
+              }
+              if (oldVaria.saldo !== updatedRecord.saldo) {
+                messaggiToast.push(updatedRecord.saldo ? 'Saldo marcato come ricevuto' : 'Saldo marcato come non ricevuto');
+              }
+              if (oldVaria.omaggio !== updatedRecord.omaggio) {
+                messaggiToast.push(updatedRecord.omaggio ? 'Omaggio marcato come consegnato' : 'Omaggio marcato come non consegnato');
+              }
+              if (oldVaria.registrazione !== updatedRecord.registrazione) {
+                const oldStato = stati.find(s => s.id === oldVaria.registrazione)?.descrizione || 'N/A';
+                const newStato = stati.find(s => s.id === updatedRecord.registrazione)?.descrizione || 'N/A';
+                messaggiToast.push(`Stato cambiato da "${oldStato}" a "${newStato}"`);
+              }
+
+              if (messaggiToast.length > 0) {
+                toast.success(messaggiToast[0]);
+              }
+            }
+          }
+          else if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old.id;
+            setVarie(prev => prev.filter(v => v.id !== deletedId));
+            setTotalRecords(prev => Math.max(0, prev - 1));
+            toast.success('Varia eliminata');
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setRealtimeConnected(true);
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+      setRealtimeConnected(false);
+    };
+  }, [user?.id, stati]);
+
   const handleColumnFilterChange = useCallback((key: keyof typeof columnFilters, value: string) => {
     setColumnFilters(prev => ({ ...prev, [key]: value }));
     setCurrentPage(1);
@@ -376,28 +484,26 @@ export const VariePage: React.FC = () => {
     fetchData({ columnFilters: newFilters, page: 1 });
   };
 
-  const handleResetFilters = () => {
-    const defaultFilters: typeof columnFilters = {
-      stato: '', tipo_incarico: '', committente: '', proprieta: '', note: ''
+  const handlePresetFilterToggle = (filterName: keyof typeof presetFilters) => {
+    const newPresetFilters = {
+      ...presetFilters,
+      [filterName]: !presetFilters[filterName]
     };
-    setColumnFilters(defaultFilters);
+    setPresetFilters(newPresetFilters);
     setCurrentPage(1);
-    fetchData({ columnFilters: defaultFilters, page: 1 });
+    fetchData({ columnFilters, presetFilters: newPresetFilters, page: 1 });
   };
 
-  const handleFilterToggle = (filterName: keyof typeof filtriAttivi) => {
-    const newFiltriAttivi = {
-      ...filtriAttivi,
-      [filterName]: !filtriAttivi[filterName]
+  const handleResetFilters = () => {
+    const defaultFilters: typeof columnFilters = {
+      stato: '', tipo_incarico: '', committente: '', proprieta: '', indirizzo: '', citta: '', note: '',
+      acconto: 'all', saldo: 'all'
     };
-
-    setFiltriAttivi(newFiltriAttivi);
+    const defaultPresetFilters = { nonPagate: false };
+    setColumnFilters(defaultFilters);
+    setPresetFilters(defaultPresetFilters);
     setCurrentPage(1);
-
-    fetchData({
-      filtriAttivi: newFiltriAttivi,
-      page: 1
-    });
+    fetchData({ columnFilters: defaultFilters, presetFilters: defaultPresetFilters, page: 1 });
   };
 
   const handleContextMenu = (e: React.MouseEvent, varia: Varie) => {
@@ -438,7 +544,6 @@ export const VariePage: React.FC = () => {
       toast.success('Stato aggiornato con successo');
       setShowContextMenuActionModal(null);
       setSelectedVariaForContextMenu(null);
-      fetchData();
     }
   };
 
@@ -450,7 +555,8 @@ export const VariePage: React.FC = () => {
         ...variaData,
         committente: `${variaData.committente}`,
         registrazione: 1,
-        pagamento: false,
+        acconto: false,
+        saldo: false,
         created_at: new Date().toISOString(),
         user_id: user?.id
       };
@@ -465,7 +571,6 @@ export const VariePage: React.FC = () => {
         return;
       }
 
-      await fetchData();
       toast.success('Varia duplicata con successo');
     } catch (error) {
       console.error('Errore:', error);
@@ -492,13 +597,25 @@ export const VariePage: React.FC = () => {
     return Math.ceil(totalRecords / recordsPerPage);
   };
 
-  const handleToggleField = async (varia: Varie, field: 'pagamento' | 'acconto' | 'omaggio') => {
+  const handleToggleField = async (varia: Varie, field: 'acconto' | 'saldo' | 'omaggio') => {
     try {
+      if (field === 'acconto' && varia.saldo) {
+        toast.error('Acconto non disponibile se il saldo è già stato flaggato');
+        return;
+      }
+
       const newValue = !varia[field];
+
+      const updateData: any = { [field]: newValue };
+      if (field === 'saldo') {
+        if (newValue) {
+          updateData.acconto = true;
+        }
+      }
 
       const { error } = await supabase
         .from('varie')
-        .update({ [field]: newValue })
+        .update(updateData)
         .eq('id', varia.id)
         .eq('user_id', user?.id);
 
@@ -507,8 +624,13 @@ export const VariePage: React.FC = () => {
         return;
       }
 
+      setVarie(prev =>
+        prev.map(v =>
+          v.id === varia.id ? { ...v, ...updateData } as Varie : v
+        )
+      );
+
       toast.success(`Campo ${field} aggiornato con successo`);
-      fetchData();
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nell\'aggiornamento');
@@ -533,7 +655,6 @@ export const VariePage: React.FC = () => {
       }
 
       toast.success('Varia eliminata con successo');
-      fetchData();
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nell\'eliminazione');
@@ -670,7 +791,6 @@ export const VariePage: React.FC = () => {
                   note: formData.note.trim() || null,
                   registrazione: 1,
                   progressivo: '',
-                  pagamento: false,
                   user_id: user?.id
                 }]);
 
@@ -719,8 +839,8 @@ export const VariePage: React.FC = () => {
         mail: varia.mail || '',
         registrazione: varia.registrazione?.toString() || '',
         tipo_incarico: varia.tipo_incarico || '',
-        pagamento: varia.pagamento,
         acconto: varia.acconto,
+        saldo: varia.saldo,
         omaggio: varia.omaggio,
         note: varia.note || ''
       });
@@ -737,7 +857,9 @@ export const VariePage: React.FC = () => {
         mail: '',
         registrazione: '',
         tipo_incarico: '',
-        pagamento: false,
+        acconto: false,
+        saldo: false,
+        omaggio: false,
         note: ''
       });
     }
@@ -758,15 +880,25 @@ export const VariePage: React.FC = () => {
       mail: '',
       registrazione: '',
       tipo_incarico: '',
-      pagamento: false,
       acconto: false,
+      saldo: false,
       omaggio: false,
       note: ''
     });
   };
 
+  const handleSaldoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nuovoSaldo = e.target.checked;
+
+    setFormData(prev => ({
+      ...prev,
+      saldo: nuovoSaldo,
+      acconto: nuovoSaldo ? true : prev.acconto
+    }));
+  };
+
   const getStatoStyle = (stato: StatoGenerale | undefined) => {
-    if (!stato || !stato.colore) return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
+    if (!stato || !stato.colore) return 'bg-gray-100 text-gray-800';
     return `text-white`;
   };
 
@@ -775,37 +907,53 @@ export const VariePage: React.FC = () => {
     return stato.colore;
   };
 
-  const renderToggleButton = (value: boolean) => {
+  const renderToggleButton = (value: boolean, enabled: boolean = true) => {
     return (
       <div
-        className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 hover:scale-110 ${value
-            ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50'
-            : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600'
+        className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 ${enabled ? 'hover:scale-110' : ''
+          } ${value
+            ? 'bg-green-100 hover:bg-green-200'
+            : 'bg-gray-100 hover:bg-gray-200'
+          } ${!enabled ? 'opacity-30 cursor-not-allowed border-2 border-dashed border-gray-300' : ''
           }`}
       >
         {value ? (
-          <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+          <Check className="w-4 h-4 text-green-600" />
         ) : (
-          <X className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+          <X className="w-4 h-4 text-gray-400" />
         )}
       </div>
     );
   };
 
   return (
-    <div className="h-full flex flex-col px-4">
+    <div className="h-full flex flex-col">
       <div className="space-y-3 flex-1 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Varie</h1>
-            <p className="text-gray-600 dark:text-gray-300">Gestione pratiche varie</p>
+            <h1 className="text-2xl font-bold text-gray-900">Varie</h1>
+            <p className="text-gray-600">Gestione pratiche varie</p>
+            {realtimeConnected && (
+              <div className="flex items-center gap-2 mt-1">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-xs text-green-600">
+                  Aggiornamenti in tempo reale attivi
+                  {lastUpdateTime && (
+                    <span className="ml-1 text-gray-400">
+                      (ultimo: {lastUpdateTime.toLocaleTimeString('it-IT')})
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3">
             {activeFilterCount > 0 && (
               <button
+                type="button"
                 onClick={handleResetFilters}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 <X className="w-4 h-4" />
                 Reset filtri
@@ -815,6 +963,7 @@ export const VariePage: React.FC = () => {
               </button>
             )}
             <button
+              type="button"
               onClick={() => openModal()}
               className="btn btn-primary flex items-center gap-2"
             >
@@ -824,98 +973,207 @@ export const VariePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Filtri toggle */}
-        <div className="flex flex-wrap gap-4">
-          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${filtriAttivi.nonPagati
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-            }`}>
-            <input
-              type="checkbox"
-              checked={filtriAttivi.nonPagati}
-              onChange={() => handleFilterToggle('nonPagati')}
-              className="sr-only"
-            />
-            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${filtriAttivi.nonPagati
-                ? 'border-white bg-white'
-                : 'border-gray-400 dark:border-gray-500 bg-transparent'
-              }`}>
-              {filtriAttivi.nonPagati && (
-                <svg className="w-3 h-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              )}
-            </div>
-            <span className="text-sm font-medium">Non pagati</span>
-          </label>
-        </div>
+      {/* Filtri preimpostati */}
+      <div className="flex flex-wrap gap-3">
+        <label className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-all duration-150 ${
+          presetFilters.nonPagate
+            ? 'bg-red-500 text-white shadow-md'
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+        }`}>
+          <input
+            type="checkbox"
+            checked={presetFilters.nonPagate}
+            onChange={() => handlePresetFilterToggle('nonPagate')}
+            className="sr-only"
+          />
+          Non pagate
+        </label>
+      </div>
 
       {/* Tabella */}
-      <div className="card p-0 dark:bg-gray-800 dark:border-gray-700 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
+      <div className="card p-0 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
         <div className="overflow-x-auto h-full overflow-y-auto">
           <table className="w-full" style={{ minHeight: '400px' }}>
-            <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+            <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Stato</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tipo Incarico</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Committente</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Proprietario</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Pagamento</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Acconto</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Omaggio</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Note</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stato</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Committente</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proprietario</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo Incarico</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Indirizzo</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Città</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Note</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Acconto</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Saldo</th>
               </tr>
               {/* Riga filtri inline */}
-              <tr className="bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
+              <tr className="bg-gray-100 border-b border-gray-200">
                 <td className="px-2 py-1.5">
                   <div className="relative">
                     <select
                       value={columnFilters.stato}
                       onChange={(e) => handleApplyFilter({ stato: e.target.value })}
-                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white appearance-none pr-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded bg-white text-gray-900 appearance-none pr-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
-                      <option value="" className="bg-white dark:bg-gray-700 dark:text-gray-200">Tutti</option>
+                      <option value="" className="bg-white">Tutti</option>
                       {stati.map((stato) => (
-                        <option key={stato.id} value={stato.id} className="bg-white dark:bg-gray-700 dark:text-gray-200">
+                        <option key={stato.id} value={stato.id} className="bg-white">
                           {stato.descrizione}
                         </option>
                       ))}
                     </select>
-                    <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                    <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
                   </div>
                 </td>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="text"
-                    value={columnFilters.tipo_incarico}
-                    onChange={(e) => handleColumnFilterChange('tipo_incarico', e.target.value)}
-                    placeholder="Cerca..."
-                    className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={columnFilters.committente}
+                      onChange={(e) => handleColumnFilterChange('committente', e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                          handleApplyFilter({ committente: (e.target as HTMLInputElement).value });
+                        }
+                      }}
+                      placeholder="Cerca..."
+                      className="w-full text-xs px-2 py-1.5 pr-7 border border-gray-300 rounded bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleApplyFilter({ committente: columnFilters.committente })}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                      title="Cerca"
+                    >
+                      <Search className="w-3 h-3" />
+                    </button>
+                  </div>
                 </td>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="text"
-                    value={columnFilters.committente}
-                    onChange={(e) => handleColumnFilterChange('committente', e.target.value)}
-                    placeholder="Cerca..."
-                    className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={columnFilters.proprieta}
+                      onChange={(e) => handleColumnFilterChange('proprieta', e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                          handleApplyFilter({ proprieta: (e.target as HTMLInputElement).value });
+                        }
+                      }}
+                      placeholder="Cerca..."
+                      className="w-full text-xs px-2 py-1.5 pr-7 border border-gray-300 rounded bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleApplyFilter({ proprieta: columnFilters.proprieta })}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                      title="Cerca"
+                    >
+                      <Search className="w-3 h-3" />
+                    </button>
+                  </div>
                 </td>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="text"
-                    value={columnFilters.proprieta}
-                    onChange={(e) => handleColumnFilterChange('proprieta', e.target.value)}
-                    placeholder="Cerca..."
-                    className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={columnFilters.tipo_incarico}
+                      onChange={(e) => handleColumnFilterChange('tipo_incarico', e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                          handleApplyFilter({ tipo_incarico: (e.target as HTMLInputElement).value });
+                        }
+                      }}
+                      placeholder="Cerca..."
+                      className="w-full text-xs px-2 py-1.5 pr-7 border border-gray-300 rounded bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleApplyFilter({ tipo_incarico: columnFilters.tipo_incarico })}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                      title="Cerca"
+                    >
+                      <Search className="w-3 h-3" />
+                    </button>
+                  </div>
                 </td>
-                <td className="px-2 py-1.5 text-center">
-                  <TriStateFilter
-                    value={columnFilters.pagamento || 'all'}
-                    onChange={(v) => handleApplyFilter({ pagamento: v })}
-                  />
+                <td className="px-2 py-1.5">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={columnFilters.indirizzo}
+                      onChange={(e) => handleColumnFilterChange('indirizzo', e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                          handleApplyFilter({ indirizzo: (e.target as HTMLInputElement).value });
+                        }
+                      }}
+                      placeholder="Cerca..."
+                      className="w-full text-xs px-2 py-1.5 pr-7 border border-gray-300 rounded bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleApplyFilter({ indirizzo: columnFilters.indirizzo })}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                      title="Cerca"
+                    >
+                      <Search className="w-3 h-3" />
+                    </button>
+                  </div>
+                </td>
+                <td className="px-2 py-1.5">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={columnFilters.citta}
+                      onChange={(e) => handleColumnFilterChange('citta', e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                          handleApplyFilter({ citta: (e.target as HTMLInputElement).value });
+                        }
+                      }}
+                      placeholder="Cerca..."
+                      className="w-full text-xs px-2 py-1.5 pr-7 border border-gray-300 rounded bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleApplyFilter({ citta: columnFilters.citta })}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                      title="Cerca"
+                    >
+                      <Search className="w-3 h-3" />
+                    </button>
+                  </div>
+                </td>
+                <td className="px-2 py-1.5">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={columnFilters.note}
+                      onChange={(e) => handleColumnFilterChange('note', e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          (e.target as HTMLInputElement).blur();
+                          handleApplyFilter({ note: (e.target as HTMLInputElement).value });
+                        }
+                      }}
+                      placeholder="Cerca..."
+                      className="w-full text-xs px-2 py-1.5 pr-7 border border-gray-300 rounded bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleApplyFilter({ note: columnFilters.note })}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                      title="Cerca"
+                    >
+                      <Search className="w-3 h-3" />
+                    </button>
+                  </div>
                 </td>
                 <td className="px-2 py-1.5 text-center">
                   <TriStateFilter
@@ -925,25 +1183,16 @@ export const VariePage: React.FC = () => {
                 </td>
                 <td className="px-2 py-1.5 text-center">
                   <TriStateFilter
-                    value={columnFilters.omaggio || 'all'}
-                    onChange={(v) => handleApplyFilter({ omaggio: v })}
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <input
-                    type="text"
-                    value={columnFilters.note}
-                    onChange={(e) => handleColumnFilterChange('note', e.target.value)}
-                    placeholder="Cerca..."
-                    className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={columnFilters.saldo || 'all'}
+                    onChange={(v) => handleApplyFilter({ saldo: v })}
                   />
                 </td>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="bg-white divide-y divide-gray-200">
               {loading || authLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="ml-2">
@@ -954,13 +1203,13 @@ export const VariePage: React.FC = () => {
                 </tr>
               ) : varie.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
                     Nessuna varia trovata
                   </td>
                 </tr>
               ) : (
                 varie.map((varia) => (
-                  <tr key={varia.id} className="hover:bg-gray-50 dark:hover:bg-gray-700" onContextMenu={(e) => handleContextMenu(e, varia)}>
+                  <tr key={varia.id} className="hover:bg-gray-50" onContextMenu={(e) => handleContextMenu(e, varia)}>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(varia.registrazione_info)}`}
@@ -969,37 +1218,32 @@ export const VariePage: React.FC = () => {
                         {varia.registrazione_info?.descrizione || 'N/A'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{varia.tipo_incarico || '-'}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{varia.committente}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{combineProprieta(varia.proprieta, varia.proprieta2)}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{varia.committente}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{combineProprieta(varia.proprieta, varia.proprieta2)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{varia.tipo_incarico || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate">{varia.indirizzo || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate">{varia.citta || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate">{varia.note || '-'}</td>
                     <td className="px-4 py-3 text-center">
                       <button
-                        onClick={() => handleToggleField(varia, 'pagamento')}
-                        className="transition-colors cursor-pointer"
-                        title="Clicca per cambiare stato"
-                      >
-                        {renderToggleButton(varia.pagamento)}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
+                        type="button"
                         onClick={() => handleToggleField(varia, 'acconto')}
                         className="transition-colors cursor-pointer"
                         title="Clicca per cambiare stato"
                       >
-                        {renderToggleButton(varia.acconto)}
+                        {renderToggleButton(varia.acconto, varia.saldo !== true)}
                       </button>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button
-                        onClick={() => handleToggleField(varia, 'omaggio')}
+                        type="button"
+                        onClick={() => handleToggleField(varia, 'saldo')}
                         className="transition-colors cursor-pointer"
                         title="Clicca per cambiare stato"
                       >
-                        {renderToggleButton(varia.omaggio)}
+                        {renderToggleButton(varia.saldo)}
                       </button>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 max-w-xs truncate">{varia.note || '-'}</td>
                   </tr>
                 ))
               )}
@@ -1009,19 +1253,19 @@ export const VariePage: React.FC = () => {
 
         {/* Controlli Paginazione */}
         {varie.length > 0 && (
-          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
             <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="text-sm text-gray-500 dark:text-gray-400">
+              <div className="text-sm text-gray-500">
                 Mostrando {Math.min((currentPage - 1) * recordsPerPage + 1, totalRecords)} - {Math.min(currentPage * recordsPerPage, totalRecords)} di {totalRecords} varie
               </div>
 
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-4">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">Record:</span>
+                  <span className="text-sm text-gray-500">Record:</span>
                   <select
                     value={recordsPerPage}
                     onChange={(e) => handleRecordsPerPageChange(parseInt(e.target.value))}
-                    className="input py-1 px-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    className="input py-1 px-2 text-sm"
                   >
                     <option value={25}>25</option>
                     <option value={50}>50</option>
@@ -1035,7 +1279,7 @@ export const VariePage: React.FC = () => {
                     <button
                       onClick={() => handlePageChange(1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                      className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       ««
                     </button>
@@ -1043,7 +1287,7 @@ export const VariePage: React.FC = () => {
                     <button
                       onClick={() => handlePageChange(currentPage - 1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                      className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       ‹
                     </button>
@@ -1066,7 +1310,7 @@ export const VariePage: React.FC = () => {
                           onClick={() => handlePageChange(pageNum)}
                           className={`px-3 py-1 text-sm border rounded ${currentPage === pageNum
                               ? 'bg-blue-500 text-white border-blue-500'
-                              : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 dark:text-gray-300'
+                              : 'border-gray-300 hover:bg-gray-100'
                             }`}
                         >
                           {pageNum}
@@ -1077,7 +1321,7 @@ export const VariePage: React.FC = () => {
                     <button
                       onClick={() => handlePageChange(currentPage + 1)}
                       disabled={currentPage === getTotalPages()}
-                      className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                      className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       ›
                     </button>
@@ -1085,7 +1329,7 @@ export const VariePage: React.FC = () => {
                     <button
                       onClick={() => handlePageChange(getTotalPages())}
                       disabled={currentPage === getTotalPages()}
-                      className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                      className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       »»
                     </button>
@@ -1094,7 +1338,7 @@ export const VariePage: React.FC = () => {
               </div>
 
               {getTotalPages() > 1 && (
-                <div className="text-sm text-gray-500 dark:text-gray-400">
+                <div className="text-sm text-gray-500">
                   Pagina {currentPage} di {getTotalPages()}
                 </div>
               )}
@@ -1106,14 +1350,15 @@ export const VariePage: React.FC = () => {
       {/* Modal */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">
                 {editingVaria ? 'Modifica Varia' : 'Nuova Varia'}
               </h2>
               <button
+                type="button"
                 onClick={closeModal}
-                className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -1123,7 +1368,7 @@ export const VariePage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Committente *
                     </label>
                     <input
@@ -1132,13 +1377,13 @@ export const VariePage: React.FC = () => {
                       value={formData.committente}
                       onChange={handleInputChange}
                       placeholder="Nome committente"
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Proprietario
                     </label>
                     <RubricaAutocomplete
@@ -1157,7 +1402,7 @@ export const VariePage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Proprietario 2
                     </label>
                     <input
@@ -1166,12 +1411,12 @@ export const VariePage: React.FC = () => {
                       value={formData.proprieta2}
                       onChange={handleInputChange}
                       placeholder="Nome secondo proprietario"
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Indirizzo
                     </label>
                     <input
@@ -1180,12 +1425,12 @@ export const VariePage: React.FC = () => {
                       value={formData.indirizzo}
                       onChange={handleInputChange}
                       placeholder="Indirizzo"
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Città
                     </label>
                     <input
@@ -1194,12 +1439,12 @@ export const VariePage: React.FC = () => {
                       value={formData.citta}
                       onChange={handleInputChange}
                       placeholder="Città"
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Note
                     </label>
                     <textarea
@@ -1208,7 +1453,7 @@ export const VariePage: React.FC = () => {
                       onChange={handleInputChange}
                       placeholder="Note aggiuntive"
                       rows={4}
-                      className="input w-full resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full resize-none"
                     />
                   </div>
 
@@ -1216,7 +1461,7 @@ export const VariePage: React.FC = () => {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Telefono
                     </label>
                     <input
@@ -1225,12 +1470,12 @@ export const VariePage: React.FC = () => {
                       value={formData.telefono}
                       onChange={handleInputChange}
                       placeholder="XXX XXX XXXX"
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Telefono 2
                     </label>
                     <input
@@ -1239,12 +1484,12 @@ export const VariePage: React.FC = () => {
                       value={formData.telefono2}
                       onChange={handleInputChange}
                       placeholder="XXX XXX XXXX"
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Email
                     </label>
                     <input
@@ -1253,12 +1498,12 @@ export const VariePage: React.FC = () => {
                       value={formData.mail}
                       onChange={handleInputChange}
                       placeholder="Indirizzo email"
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Stato
                     </label>
                     <div className="relative">
@@ -1266,7 +1511,7 @@ export const VariePage: React.FC = () => {
                         name="registrazione"
                         value={formData.registrazione}
                         onChange={handleInputChange}
-                        className="input w-full pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="input w-full pr-8 appearance-none"
                       >
                         <option value="">-- Seleziona stato --</option>
                         {stati.map((stato) => (
@@ -1275,12 +1520,12 @@ export const VariePage: React.FC = () => {
                           </option>
                         ))}
                       </select>
-                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Tipo Incarico
                     </label>
                     <input
@@ -1289,51 +1534,28 @@ export const VariePage: React.FC = () => {
                       value={formData.tipo_incarico}
                       onChange={handleInputChange}
                       placeholder="Tipo di incarico"
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                     />
                   </div>
 
                   <div>
-                    <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${formData.pagamento
-                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300 cursor-pointer'
-                        : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
-                      }`}>
-                      <input
-                        type="checkbox"
-                        name="pagamento"
-                        checked={formData.pagamento}
-                        onChange={handleInputChange}
-                        className="sr-only"
-                      />
-                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${formData.pagamento
-                          ? 'border-blue-500 bg-blue-500'
-                          : 'border-gray-300 dark:border-gray-500 bg-transparent'
-                        }`}>
-                        {formData.pagamento && (
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                      </div>
-                      <span className="text-sm font-medium">Pagamento</span>
-                    </label>
-                  </div>
-
-                  <div>
                     <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${formData.acconto
-                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300 cursor-pointer'
-                        : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                        ? 'bg-blue-50 border-blue-500 text-blue-700 cursor-pointer'
+                        : formData.saldo
+                        ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-not-allowed opacity-50'
+                        : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 cursor-pointer'
                       }`}>
                       <input
                         type="checkbox"
                         name="acconto"
                         checked={formData.acconto}
                         onChange={handleInputChange}
+                        disabled={formData.saldo}
                         className="sr-only"
                       />
                       <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${formData.acconto
                           ? 'border-blue-500 bg-blue-500'
-                          : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                          : 'border-gray-300 bg-transparent'
                         }`}>
                         {formData.acconto && (
                           <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -1346,9 +1568,35 @@ export const VariePage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${formData.omaggio
-                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300 cursor-pointer'
-                        : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                    <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${formData.saldo
+                      ? 'bg-green-50 border-green-500 text-green-700 cursor-pointer'
+                      : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 cursor-pointer'
+                    }`}>
+                    <input
+                      type="checkbox"
+                      name="saldo"
+                      checked={formData.saldo}
+                      onChange={handleSaldoChange}
+                      className="sr-only"
+                    />
+                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${formData.saldo
+                        ? 'border-green-500 bg-green-500'
+                        : 'border-gray-300 bg-transparent'
+                      }`}>
+                      {formData.saldo && (
+                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium">Saldo</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${formData.omaggio
+                        ? 'bg-blue-50 border-blue-500 text-blue-700 cursor-pointer'
+                        : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 cursor-pointer'
                       }`}>
                       <input
                         type="checkbox"
@@ -1359,7 +1607,7 @@ export const VariePage: React.FC = () => {
                       />
                       <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${formData.omaggio
                           ? 'border-blue-500 bg-blue-500'
-                          : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                          : 'border-gray-300 bg-transparent'
                         }`}>
                         {formData.omaggio && (
                           <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -1373,8 +1621,8 @@ export const VariePage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div className="text-sm text-gray-500 dark:text-gray-400">
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
+                <div className="text-sm text-gray-500">
                   <p>* Campo obbligatorio</p>
                 </div>
                 <div className="flex gap-3">
@@ -1382,7 +1630,7 @@ export const VariePage: React.FC = () => {
                     type="button"
                     onClick={closeModal}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Annulla
                   </button>
@@ -1412,37 +1660,37 @@ export const VariePage: React.FC = () => {
         <ContextMenu x={contextMenu.x} y={contextMenu.y}>
           <button
             onClick={() => handleContextMenuAction('edit', contextMenu.varia!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <Edit className="w-4 h-4 text-blue-500" />
+            <Edit className="w-4 h-4 text-signal-500" />
             Modifica
           </button>
           <button
             onClick={() => handleContextMenuAction('status', contextMenu.varia!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <ArrowRightCircle className="w-4 h-4 text-yellow-500" />
+            <ArrowRightCircle className="w-4 h-4 text-warning-500" />
             Cambia stato
           </button>
           <button
             onClick={() => handleContextMenuAction('contact', contextMenu.varia!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <User className="w-4 h-4 text-purple-500" />
+            <User className="w-4 h-4 text-info-500" />
             Contatto
           </button>
-          <div className="my-1 border-t border-gray-200 dark:border-gray-600" />
+          <div className="context-menu-separator" />
           <button
             onClick={() => handleContextMenuAction('duplicate', contextMenu.varia!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <Copy className="w-4 h-4 text-green-500" />
+            <Copy className="w-4 h-4 text-topo-500" />
             Duplica
           </button>
-          <div className="my-1 border-t border-gray-200 dark:border-gray-600" />
+          <div className="context-menu-separator" />
           <button
             onClick={() => handleContextMenuAction('delete', contextMenu.varia!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item context-menu-danger"
           >
             <Trash2 className="w-4 h-4" />
             Elimina
@@ -1453,14 +1701,14 @@ export const VariePage: React.FC = () => {
       {/* Modal Cambia Stato da Menu Contestuale */}
       {showContextMenuActionModal === 'status' && selectedVariaForContextMenu && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
               Cambia Stato - {selectedVariaForContextMenu.committente}
             </h3>
             <select
               value={newStatusForContextMenu}
               onChange={(e) => setNewStatusForContextMenu(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleziona stato</option>
               {stati.map((stato) => (
@@ -1471,15 +1719,17 @@ export const VariePage: React.FC = () => {
             </select>
             <div className="flex justify-end gap-2 mt-4">
               <button
+                type="button"
                 onClick={() => {
                   setShowContextMenuActionModal(null);
                   setSelectedVariaForContextMenu(null);
                 }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
               >
                 Annulla
               </button>
               <button
+                type="button"
                 onClick={handleChangeStatusFromContextMenu}
                 disabled={!newStatusForContextMenu}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1494,37 +1744,38 @@ export const VariePage: React.FC = () => {
       {/* Modal Contatto da Menu Contestuale */}
       {showContextMenuActionModal === 'contatto' && selectedVariaForContextMenu && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
               Contatto - {selectedVariaForContextMenu.committente}
             </h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proprietario</label>
-                <p className="text-gray-900 dark:text-white">{selectedVariaForContextMenu.proprieta || '-'}</p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Proprietario</label>
+                <p className="text-gray-900">{selectedVariaForContextMenu.proprieta || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Telefono</label>
-                <p className="text-gray-900 dark:text-white">{selectedVariaForContextMenu.telefono || '-'}</p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Telefono</label>
+                <p className="text-gray-900">{selectedVariaForContextMenu.telefono || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-                <p className="text-gray-900 dark:text-white">{selectedVariaForContextMenu.mail || '-'}</p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <p className="text-gray-900">{selectedVariaForContextMenu.mail || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Indirizzo</label>
-                <p className="text-gray-900 dark:text-white">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Indirizzo</label>
+                <p className="text-gray-900">
                   {selectedVariaForContextMenu.indirizzo || '-'}{selectedVariaForContextMenu.citta ? `, ${selectedVariaForContextMenu.citta}` : ''}
                 </p>
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-6">
               <button
+                type="button"
                 onClick={() => {
                   setShowContextMenuActionModal(null);
                   setSelectedVariaForContextMenu(null);
                 }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
               >
                 Chiudi
               </button>
@@ -1533,5 +1784,6 @@ export const VariePage: React.FC = () => {
         </div>
       )}
     </div>
+  </div>
   );
 }; 

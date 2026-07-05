@@ -1,0 +1,214 @@
+/* Smart-Geo Design System — "Datum" v2 Tokens */
+
+@layer base {
+  :root {
+    /* Ink Neutrals */
+    --ink-50: #FAFAF9;
+    --ink-100: #F5F5F4;
+    --ink-200: #E7E5E4;
+    --ink-300: #D6D3D1;
+    --ink-400: #A8A29E;
+    --ink-500: #78716C;
+    --ink-600: #57534E;
+    --ink-700: #44403C;
+    --ink-800: #292524;
+    --ink-900: #1C1917;
+
+    /* Signal Orange (Primary) */
+    --signal-50: #FFF7ED;
+    --signal-100: #FFEDD5;
+    --signal-200: #FED7AA;
+    --signal-300: #FDBA74;
+    --signal-400: #FB923C;
+    --signal-500: #EA580C;
+    --signal-600: #C2410C;
+    --signal-700: #9A3412;
+
+    /* Topographic Teal (Secondary/Success) */
+    --topo-50: #F0FDFA;
+    --topo-100: #CCFBF1;
+    --topo-200: #99F6E4;
+    --topo-300: #5EEAD4;
+    --topo-400: #2DD4BF;
+    --topo-500: #0F766E;
+    --topo-600: #0D9488;
+    --topo-700: #115E59;
+
+    /* Feedback Colors */
+    --success-50: #F0FDFA;
+    --success-500: #0F766E;
+    --success-600: #0D9488;
+    --error-50: #FEF2F2;
+    --error-500: #DC2626;
+    --error-600: #B91C1C;
+    --warning-50: #FFFBEB;
+    --warning-500: #D97706;
+    --warning-600: #B45309;
+    --info-50: #EFF6FF;
+    --info-500: #2563EB;
+    --info-600: #1D4ED8;
+
+    /* Spacing */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+
+    /* Border Radius */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-full: 9999px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+
+    /* Layout */
+    --sidebar-width: 240px;
+    --sidebar-collapsed-width: 64px;
+    --topbar-height: 48px;
+    --content-max-width: 1200px;
+
+    /* Animation */
+    --duration-fast: 100ms;
+    --duration-normal: 150ms;
+    --duration-slow: 200ms;
+    --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+    --easing-in: cubic-bezier(0.4, 0, 1, 1);
+    --easing-out: cubic-bezier(0, 0, 0.2, 1);
+
+    /* Focus Ring (light mode) */
+    --focus-ring-offset: var(--ink-50);
+  }
+
+  /* ============================================================
+     DARK MODE — Inverted Ink Scale
+     La scala ink viene invertita: 50 diventa scuro, 900 diventa chiaro.
+     I colori brand (signal, topo, feedback) restano invariati,
+     solo i bg badge si adattano.
+     ============================================================ */
+  .dark {
+    /* Ink Inverted */
+    --ink-50:  #1C1917;   /* canvas scuro */
+    --ink-100: #292524;   /* card bg */
+    --ink-200: #44403C;   /* bordi */
+    --ink-300: #57534E;   /* bordi forti, input border */
+    --ink-400: #A8A29E;   /* testo smorzato (invariato) */
+    --ink-500: #D6D3D1;   /* testo secondario (invertito) */
+    --ink-600: #E7E5E4;   /* testo primario (invertito) */
+    --ink-700: #F5F5F4;   /* testo heading (invertito) */
+    --ink-800: #0C0A09;   /* sidebar bg (più profondo) */
+    --ink-900: #000000;   /* chrome sidebar */
+
+    /* Signal Orange — luminosità adattata per dark */
+    --signal-50:  #431407;   /* bg badge signal scuro */
+    --signal-100: #7C2D12;
+    --signal-200: #9A3412;
+
+    /* Topo Teal — luminosità adattata per dark */
+    --topo-50:  #134E4A;    /* bg badge topo scuro */
+    --topo-100: #115E59;
+    --topo-200: #0F766E;
+
+    /* Feedback Colors — bg adattati */
+    --success-50: #134E4A;
+    --error-50:   #450A0A;
+    --warning-50: #451A03;
+    --info-50:    #1E3A5F;
+
+    /* Focus Ring (dark mode) */
+    --focus-ring-offset: var(--ink-100);
+  }
+}
+
+/* Grid Texture Background */
+.grid-texture {
+  background-image: 
+    linear-gradient(to right, var(--ink-200) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--ink-200) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.grid-texture-dark {
+  background-image: 
+    linear-gradient(to right, var(--ink-700) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--ink-700) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Skeleton Loading Animation */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--ink-100) 25%,
+    var(--ink-200) 50%,
+    var(--ink-100) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Focus Ring */
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  box-shadow: 0 0 0 2px var(--focus-ring-offset), 0 0 0 4px var(--signal-500);
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--ink-100);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ink-300);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-400);
+}
+
+/* Box-sizing globale */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Reset margini e padding */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+}
+
+/* Body base — colori reattivi al tema grazie alle CSS vars */
+body {
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--ink-50);
+  color: var(--ink-700);
+  overflow: hidden;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Selection color */
+::selection {
+  background-color: var(--signal-500);
+  color: white;
+}

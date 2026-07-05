@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Plus, Search, ChevronDown, Edit, Trash2, Check, X, Save, Copy, ArrowRightCircle, User } from 'lucide-react';
+import { Plus, ChevronDown, Edit, Trash2, Check, X, Save, Copy, ArrowRightCircle, User, Search } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/authStore';
 import { RubricaAutocomplete } from '../components/RubricaAutocomplete';
@@ -8,15 +7,6 @@ import { syncRubricaFromPratica } from '../utils/rubricaSync';
 import { ContextMenu } from '../components/ContextMenu';
 import type { Ape, StatoApe, Rubrica } from '../types';
 import toast from 'react-hot-toast';
-
-const useDebounce = (value: string, delay: number) => {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
-};
 
 const TriStateFilter = ({ value, onChange }: {
   value: 'all' | 'yes' | 'no';
@@ -28,33 +18,33 @@ const TriStateFilter = ({ value, onChange }: {
       title="Tutti"
       className={`p-1 rounded transition-all ${
         value === 'all'
-          ? 'bg-gray-200 dark:bg-gray-600 shadow-sm'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700 opacity-50 hover:opacity-100'
+          ? 'bg-ink-200 shadow-sm'
+          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
       }`}
     >
-      <div className="w-2.5 h-0.5 bg-gray-400 dark:bg-gray-500 rounded" />
+      <div className="w-2.5 h-0.5 bg-ink-400 rounded" />
     </button>
     <button
       onClick={() => onChange('yes')}
       title="Si"
       className={`p-1 rounded transition-all ${
         value === 'yes'
-          ? 'bg-gray-200 dark:bg-gray-600 shadow-sm'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700 opacity-50 hover:opacity-100'
+          ? 'bg-ink-200 shadow-sm'
+          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
       }`}
     >
-      <Check className="w-3 h-3 text-green-600 dark:text-green-400" />
+      <Check className="w-3 h-3 text-topo-600" />
     </button>
     <button
       onClick={() => onChange('no')}
       title="No"
       className={`p-1 rounded transition-all ${
         value === 'no'
-          ? 'bg-gray-200 dark:bg-gray-600 shadow-sm'
-          : 'hover:bg-gray-100 dark:hover:bg-gray-700 opacity-50 hover:opacity-100'
+          ? 'bg-ink-200 shadow-sm'
+          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
       }`}
     >
-      <X className="w-3 h-3 text-red-600 dark:text-red-400" />
+      <X className="w-3 h-3 text-error-500" />
     </button>
   </div>
 );
@@ -76,11 +66,9 @@ interface ApeFormData {
 }
 
 export const ApePage: React.FC = () => {
-  const [searchParams] = useSearchParams();
   const [pratiche, setPratiche] = useState<Ape[]>([]);
   const [stati, setStati] = useState<StatoApe[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
   const [manualRefreshNeeded, setManualRefreshNeeded] = useState(false);
@@ -93,6 +81,7 @@ export const ApePage: React.FC = () => {
     citta: string;
     note: string;
     progressivo: string;
+    pagamento: 'all' | 'yes' | 'no';
   }>({
     stato: '',
     committente: '',
@@ -100,7 +89,8 @@ export const ApePage: React.FC = () => {
     indirizzo: '',
     citta: '',
     note: '',
-    progressivo: ''
+    progressivo: '',
+    pagamento: 'all'
   });
   const [filtriAttivi, setFiltriAttivi] = useState({
     soloNonPagate: false
@@ -141,57 +131,10 @@ export const ApePage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const { user, loading: authLoading } = useAuthStore();
 
-  const debouncedCommittente = useDebounce(columnFilters.committente, 300);
-  const debouncedProprieta = useDebounce(columnFilters.proprieta, 300);
-  const debouncedNote = useDebounce(columnFilters.note, 300);
-  const debouncedIndirizzo = useDebounce(columnFilters.indirizzo, 300);
-  const debouncedCitta = useDebounce(columnFilters.citta, 300);
-  const debouncedProgressivo = useDebounce(columnFilters.progressivo, 300);
-
-  const activeFilterCount = Object.values(columnFilters).filter(val => val !== '').length;
-
-  // Funzione per gestire la selezione di una singola riga
-  const handleRowSelection = (id: number) => {
-    setSelectedRows(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
-    });
-  };
-
-  // Funzione per selezionare/deselezionare tutte le righe
-  const handleSelectAll = () => {
-    if (selectedRows.size === pratiche.length) {
-      // Se tutte le righe sono selezionate, deseleziona tutto
-      setSelectedRows(new Set());
-    } else {
-      // Altrimenti seleziona tutte le righe
-      setSelectedRows(new Set(pratiche.map(p => p.id)));
-    }
-  };
-
-  // Debounce effect: trigger fetch when debounced text values change
-  useEffect(() => {
-    if (user?.id) {
-      setColumnFilters(prev => {
-        const newFilters = {
-          ...prev,
-          committente: debouncedCommittente,
-          proprieta: debouncedProprieta,
-          note: debouncedNote,
-          indirizzo: debouncedIndirizzo,
-          citta: debouncedCitta,
-          progressivo: debouncedProgressivo
-        };
-        setTimeout(() => fetchData({ columnFilters: newFilters }), 0);
-        return newFilters;
-      });
-    }
-  }, [debouncedCommittente, debouncedProprieta, debouncedNote, debouncedIndirizzo, debouncedCitta, debouncedProgressivo, user?.id]);
+  const activeFilterCount = Object.entries(columnFilters).filter(([key, val]) => {
+    if (key === 'pagamento') return val !== 'all';
+    return val !== '';
+  }).length;
 
   // Protezione contro errori delle estensioni del browser
   useEffect(() => {
@@ -614,6 +557,12 @@ export const ApePage: React.FC = () => {
         countQuery = countQuery.eq('registrazione', parseInt(currentFilters.stato));
       }
 
+      if (currentFilters.pagamento === 'yes') {
+        countQuery = countQuery.eq('pagamento', true);
+      } else if (currentFilters.pagamento === 'no') {
+        countQuery = countQuery.eq('pagamento', false);
+      }
+
       let statiFiltroNonPagata: number[] = [];
       if (currentFiltriAttivi.soloNonPagate) {
         const { data: statiNonPagata } = await supabase
@@ -659,6 +608,12 @@ export const ApePage: React.FC = () => {
 
       if (currentFilters.stato) {
         query = query.eq('registrazione', parseInt(currentFilters.stato));
+      }
+
+      if (currentFilters.pagamento === 'yes') {
+        query = query.eq('pagamento', true);
+      } else if (currentFilters.pagamento === 'no') {
+        query = query.eq('pagamento', false);
       }
 
       if (currentFiltriAttivi.soloNonPagate) {
@@ -861,7 +816,7 @@ export const ApePage: React.FC = () => {
 
   const handleResetFilters = () => {
     const defaultFilters: typeof columnFilters = {
-      stato: '', committente: '', proprieta: '', indirizzo: '', citta: '', note: '', progressivo: ''
+      stato: '', committente: '', proprieta: '', indirizzo: '', citta: '', note: '', progressivo: '', pagamento: 'all'
     };
     setColumnFilters(defaultFilters);
     setCurrentPage(1);
@@ -928,8 +883,6 @@ export const ApePage: React.FC = () => {
       await fetchData();
       toast.success('Pratica APE duplicata con successo');
 
-      // Deseleziona le righe dopo la duplicazione
-      setSelectedRows(new Set());
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nella duplicazione della pratica');
@@ -1056,7 +1009,7 @@ export const ApePage: React.FC = () => {
   };
 
   const getStatoStyle = (stato: StatoApe | undefined) => {
-    if (!stato || !stato.colore) return 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200';
+    if (!stato || !stato.colore) return 'bg-ink-100 text-ink-800';
     return `text-white`;
   };
 
@@ -1070,14 +1023,14 @@ export const ApePage: React.FC = () => {
       <div
         className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 hover:scale-110 ${
           value
-            ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900/30 dark:hover:bg-green-900/50'
-            : 'bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600'
+            ? 'bg-topo-100 hover:bg-topo-200'
+            : 'bg-ink-100 hover:bg-ink-200'
         }`}
       >
         {value ? (
-          <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+          <Check className="w-4 h-4 text-topo-600" />
         ) : (
-          <X className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+          <X className="w-4 h-4 text-ink-400" />
         )}
       </div>
     );
@@ -1088,20 +1041,20 @@ export const ApePage: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col px-4">
+    <div className="h-full flex flex-col">
       <div className="space-y-3 flex-1 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Gestione APE</h1>
-            <p className="text-gray-600 dark:text-gray-300">Gestione pratiche APE</p>
+            <h1 className="text-2xl font-bold text-ink-900">Gestione APE</h1>
+            <p className="text-ink-600">Gestione pratiche APE</p>
             {realtimeConnected && (
               <div className="flex items-center gap-2 mt-1">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-xs text-green-600 dark:text-green-400">
+                <div className="w-2 h-2 bg-topo-500 rounded-full animate-pulse"></div>
+                <span className="text-xs text-topo-600">
                   Aggiornamenti in tempo reale attivi
                   {lastUpdateTime && (
-                    <span className="ml-1 text-gray-500 dark:text-gray-400">
+                    <span className="ml-1 text-ink-500">
                       (ultimo: {lastUpdateTime.toLocaleTimeString('it-IT')})
                     </span>
                   )}
@@ -1113,11 +1066,11 @@ export const ApePage: React.FC = () => {
             {activeFilterCount > 0 && (
               <button
                 onClick={handleResetFilters}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-ink-600 bg-ink-100 rounded-lg hover:bg-ink-200 transition-colors"
               >
                 <X className="w-4 h-4" />
                 Reset filtri
-                <span className="bg-blue-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                <span className="bg-signal-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
                   {activeFilterCount}
                 </span>
               </button>
@@ -1128,7 +1081,7 @@ export const ApePage: React.FC = () => {
                   fetchData();
                   setManualRefreshNeeded(false);
                 }}
-                className="btn btn-outline flex items-center gap-2 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                className="btn btn-outline flex items-center gap-2"
                 title="Aggiorna dati"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1147,12 +1100,12 @@ export const ApePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Filtri toggle */}
-        <div className="flex flex-wrap gap-4">
-          <label className={`flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+        {/* Filtri preimpostati */}
+        <div className="flex flex-wrap gap-3">
+          <label className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 ${
             filtriAttivi.soloNonPagate
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              ? 'bg-signal-500 text-white shadow-md'
+              : 'bg-ink-100 text-ink-700 hover:bg-ink-200'
           }`}>
             <input
               type="checkbox"
@@ -1160,264 +1113,296 @@ export const ApePage: React.FC = () => {
               onChange={() => handleFilterToggle('soloNonPagate')}
               className="sr-only"
             />
-            <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
-              filtriAttivi.soloNonPagate
-                ? 'border-white bg-white'
-                : 'border-gray-400 dark:border-gray-500 bg-transparent'
-            }`}>
-              {filtriAttivi.soloNonPagate && (
-                <svg className="w-3 h-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              )}
-            </div>
-            <span className="text-sm font-medium">Non pagate</span>
+            Non pagate
           </label>
         </div>
 
-      {/* Sezione azioni multiple (appare solo quando ci sono righe selezionate) */}
-      {selectedRows.size > 0 && (
-        <div className="card bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 dark:border-blue-400">
-          <div className="p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                {selectedRows.size} pratica{selectedRows.size !== 1 ? 'he' : ''} selezionata{selectedRows.size !== 1 ? 'e' : ''}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  className="btn btn-primary flex items-center gap-2"
-                  disabled={selectedRows.size !== 1}
-                  onClick={() => {
-                    const selectedPratica = pratiche.find(p => selectedRows.has(p.id));
-                    if (selectedPratica) {
-                      handleDuplicatePratica(selectedPratica);
-                    }
-                  }}
-                >
-                  Duplica pratica
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Contenuto principale */}
       {loading ? (
-        <div className="card p-0 dark:bg-gray-800 dark:border-gray-700 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
+        <div className="card p-0 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            <span className="ml-2 text-gray-500 dark:text-gray-400">Caricamento...</span>
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-signal-500"></div>
+            <span className="ml-2 text-ink-500">Caricamento...</span>
           </div>
         </div>
       ) : pratiche.length === 0 ? (
-        <div className="card p-0 dark:bg-gray-800 dark:border-gray-700 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-            <p className="text-yellow-800 dark:text-yellow-300 text-center">Nessuna pratica APE trovata.</p>
+        <div className="card p-0 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
+          <div className="bg-warning-50 border border-warning-500/20 rounded-lg p-4">
+            <p className="text-warning-600 text-center">Nessuna pratica APE trovata.</p>
           </div>
         </div>
       ) : (
         /* Tabella */
-        <div className="card p-0 dark:bg-gray-800 dark:border-gray-700 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
+        <div className="card p-0 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
           <div className="overflow-x-auto h-full overflow-y-auto">
             <table className="w-full" style={{ minHeight: '400px' }}>
-              <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+              <thead className="bg-ink-50 border-b border-ink-200">
                 <tr>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                    <label className="flex items-center justify-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedRows.size === pratiche.length && pratiche.length > 0}
-                        onChange={handleSelectAll}
-                        className="sr-only"
-                        title={selectedRows.size === pratiche.length ? "Deseleziona tutto" : "Seleziona tutto"}
-                      />
-                      <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
-                        selectedRows.size === pratiche.length && pratiche.length > 0
-                          ? 'border-blue-600 bg-blue-600 dark:border-blue-400 dark:bg-blue-400'
-                          : 'border-gray-300 dark:border-gray-600 bg-transparent'
-                      }`}>
-                        {selectedRows.size === pratiche.length && pratiche.length > 0 && (
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                      </div>
-                    </label>
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Stato
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Committente
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Proprietà
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Indirizzo
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Città
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Note
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Progressivo
                   </th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Pagamento
                   </th>
                 </tr>
                 {/* Riga filtri inline */}
-                <tr className="bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-600">
-                  <td className="px-2 py-1.5"></td>
+                <tr className="bg-ink-100 border-b border-ink-200">
                   <td className="px-2 py-1.5">
                     <div className="relative">
                       <select
                         value={columnFilters.stato}
                         onChange={(e) => handleApplyFilter({ stato: e.target.value })}
-                        className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white appearance-none pr-6 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="w-full text-xs px-2 py-1.5 border border-ink-300 rounded bg-white text-ink-900 appearance-none pr-6 focus:outline-none focus:ring-1 focus:ring-signal-500"
                       >
-                        <option value="" className="bg-white dark:bg-gray-700 dark:text-gray-200">Tutti</option>
+                        <option value="" className="bg-white">Tutti</option>
                         {stati.map((stato) => (
-                          <option key={stato.id} value={stato.id} className="bg-white dark:bg-gray-700 dark:text-gray-200">
+                          <option key={stato.id} value={stato.id} className="bg-white">
                             {stato.descrizione}
                           </option>
                         ))}
                       </select>
-                      <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400 dark:text-gray-500 pointer-events-none" />
+                      <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-ink-400 pointer-events-none" />
                     </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={columnFilters.committente}
-                      onChange={(e) => handleColumnFilterChange('committente', e.target.value)}
-                      placeholder="Cerca..."
-                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.committente}
+                        onChange={(e) => handleColumnFilterChange('committente', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ committente: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded bg-white text-ink-900 placeholder-ink-400 focus:outline-none focus:ring-1 focus:ring-signal-500"
+                      />
+                      <button
+                        onClick={() => handleApplyFilter({ committente: columnFilters.committente })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={columnFilters.proprieta}
-                      onChange={(e) => handleColumnFilterChange('proprieta', e.target.value)}
-                      placeholder="Cerca..."
-                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.proprieta}
+                        onChange={(e) => handleColumnFilterChange('proprieta', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ proprieta: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded bg-white text-ink-900 placeholder-ink-400 focus:outline-none focus:ring-1 focus:ring-signal-500"
+                      />
+                      <button
+                        onClick={() => handleApplyFilter({ proprieta: columnFilters.proprieta })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={columnFilters.indirizzo}
-                      onChange={(e) => handleColumnFilterChange('indirizzo', e.target.value)}
-                      placeholder="Cerca..."
-                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.indirizzo}
+                        onChange={(e) => handleColumnFilterChange('indirizzo', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ indirizzo: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded bg-white text-ink-900 placeholder-ink-400 focus:outline-none focus:ring-1 focus:ring-signal-500"
+                      />
+                      <button
+                        onClick={() => handleApplyFilter({ indirizzo: columnFilters.indirizzo })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={columnFilters.citta}
-                      onChange={(e) => handleColumnFilterChange('citta', e.target.value)}
-                      placeholder="Cerca..."
-                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.citta}
+                        onChange={(e) => handleColumnFilterChange('citta', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ citta: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded bg-white text-ink-900 placeholder-ink-400 focus:outline-none focus:ring-1 focus:ring-signal-500"
+                      />
+                      <button
+                        onClick={() => handleApplyFilter({ citta: columnFilters.citta })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={columnFilters.note}
-                      onChange={(e) => handleColumnFilterChange('note', e.target.value)}
-                      placeholder="Cerca..."
-                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.note}
+                        onChange={(e) => handleColumnFilterChange('note', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ note: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded bg-white text-ink-900 placeholder-ink-400 focus:outline-none focus:ring-1 focus:ring-signal-500"
+                      />
+                      <button
+                        onClick={() => handleApplyFilter({ note: columnFilters.note })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={columnFilters.progressivo}
-                      onChange={(e) => handleColumnFilterChange('progressivo', e.target.value)}
-                      placeholder="Cerca..."
-                      className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={columnFilters.progressivo}
+                        onChange={(e) => handleColumnFilterChange('progressivo', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                            handleApplyFilter({ progressivo: (e.target as HTMLInputElement).value });
+                          }
+                        }}
+                        placeholder="Cerca..."
+                        className="w-full text-xs px-2 py-1.5 pr-7 border border-ink-300 rounded bg-white text-ink-900 placeholder-ink-400 focus:outline-none focus:ring-1 focus:ring-signal-500"
+                      />
+                      <button
+                        onClick={() => handleApplyFilter({ progressivo: columnFilters.progressivo })}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-400 hover:text-ink-600 hover:bg-ink-200 transition-colors"
+                        title="Cerca"
+                      >
+                        <Search className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <TriStateFilter
+                      value={columnFilters.pagamento}
+                      onChange={(v) => handleApplyFilter({ pagamento: v })}
                     />
                   </td>
-                  <td className="px-2 py-1.5"></td>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {pratiche.map((pratica) => (
-                  <tr key={pratica.id} className="hover:bg-gray-50 dark:hover:bg-gray-700" onContextMenu={(e) => handleContextMenu(e, pratica)}>
-                    <td className="px-4 py-3 text-center">
-                      <label className="flex items-center justify-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedRows.has(pratica.id)}
-                          onChange={() => handleRowSelection(pratica.id)}
-                          className="sr-only"
-                        />
-                        <div className={`w-4 h-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
-                          selectedRows.has(pratica.id)
-                            ? 'border-blue-600 bg-blue-600 dark:border-blue-400 dark:bg-blue-400'
-                            : 'border-gray-300 dark:border-gray-600 bg-transparent'
-                        }`}>
-                          {selectedRows.has(pratica.id) && (
-                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                        </div>
-                      </label>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(pratica.registrazione_info)}`}
-                        style={{ backgroundColor: getStatoBackgroundColor(pratica.registrazione_info) }}
-                      >
-                        {pratica.registrazione_info?.descrizione || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {pratica.committente}
-                    </td>
-                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                       {combineProprieta(pratica.proprieta, pratica.proprieta2)}
-                     </td>
-                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                       {pratica.indirizzo || '-'}
-                     </td>
-                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                       {pratica.citta || '-'}
-                     </td>
-                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 max-w-xs truncate">
-                      {pratica.note || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                      {pratica.progressivo || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => handleTogglePagamento(pratica)}
-                        className="transition-colors cursor-pointer"
-                        title="Clicca per cambiare stato"
-                      >
-                        {renderToggleButton(pratica.pagamento)}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+              <tbody className="bg-white divide-y divide-ink-200">
+                {(() => {
+                  let currentYear: string | null = null;
+                  return pratiche.flatMap((pratica) => {
+                    const year = new Date(pratica.created_at).getFullYear().toString();
+                    const rows: JSX.Element[] = [];
+                    if (year !== currentYear) {
+                      currentYear = year;
+                      rows.push(
+                        <tr key={`year-${year}`} className="bg-ink-100">
+                          <td colSpan={8} className="px-4 py-2 text-sm font-bold text-ink-700">
+                            {year}
+                          </td>
+                        </tr>
+                      );
+                    }
+                    rows.push(
+                      <tr key={pratica.id} className="hover:bg-ink-50" onContextMenu={(e) => handleContextMenu(e, pratica)}>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(pratica.registrazione_info)}`}
+                            style={{ backgroundColor: getStatoBackgroundColor(pratica.registrazione_info) }}
+                          >
+                            {pratica.registrazione_info?.descrizione || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium text-ink-900">
+                          {pratica.committente}
+                        </td>
+                         <td className="px-4 py-3 text-sm text-ink-900">
+                           {combineProprieta(pratica.proprieta, pratica.proprieta2)}
+                         </td>
+                         <td className="px-4 py-3 text-sm text-ink-900">
+                           {pratica.indirizzo || '-'}
+                         </td>
+                         <td className="px-4 py-3 text-sm text-ink-900">
+                           {pratica.citta || '-'}
+                         </td>
+                         <td className="px-4 py-3 text-sm text-ink-900 max-w-xs truncate">
+                          {pratica.note || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-ink-900">
+                          {pratica.progressivo || '-'}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => handleTogglePagamento(pratica)}
+                            className="transition-colors cursor-pointer"
+                            title="Clicca per cambiare stato"
+                          >
+                            {renderToggleButton(pratica.pagamento)}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                    return rows;
+                  });
+                })()}
               </tbody>
             </table>
           </div>
           
           {/* Controlli Paginazione */}
           {pratiche.length > 0 && (
-            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+            <div className="px-6 py-4 border-t border-ink-200 bg-ink-50">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 {/* Info record */}
-                <div className="text-sm text-gray-500 dark:text-gray-400">
+                <div className="text-sm text-ink-500">
                   Mostrando {Math.min((currentPage - 1) * recordsPerPage + 1, totalRecords)} - {Math.min(currentPage * recordsPerPage, totalRecords)} di {totalRecords} pratiche
                 </div>
                 
@@ -1425,11 +1410,11 @@ export const ApePage: React.FC = () => {
                 <div className="flex items-center gap-4">
                   {/* Selezione record per pagina */}
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500 dark:text-gray-400">Record:</span>
+                    <span className="text-sm text-ink-500">Record:</span>
                     <select
                       value={recordsPerPage}
                       onChange={(e) => handleRecordsPerPageChange(parseInt(e.target.value))}
-                      className="input py-1 px-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      className="input py-1 px-2 text-sm"
                     >
                       <option value={25}>25</option>
                       <option value={50}>50</option>
@@ -1445,7 +1430,7 @@ export const ApePage: React.FC = () => {
                       <button
                         onClick={() => handlePageChange(1)}
                         disabled={currentPage === 1}
-                        className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                        className="px-3 py-1 text-sm border border-ink-300 rounded hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         ««
                       </button>
@@ -1454,7 +1439,7 @@ export const ApePage: React.FC = () => {
                       <button
                         onClick={() => handlePageChange(currentPage - 1)}
                         disabled={currentPage === 1}
-                        className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                        className="px-3 py-1 text-sm border border-ink-300 rounded hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         ‹
                       </button>
@@ -1478,8 +1463,8 @@ export const ApePage: React.FC = () => {
                             onClick={() => handlePageChange(pageNum)}
                             className={`px-3 py-1 text-sm border rounded ${
                               currentPage === pageNum
-                                ? 'bg-blue-500 text-white border-blue-500'
-                                : 'border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600 dark:text-gray-300'
+                                ? 'bg-signal-500 text-white border-signal-500'
+                                : 'border-ink-300 hover:bg-ink-100'
                             }`}
                           >
                             {pageNum}
@@ -1491,7 +1476,7 @@ export const ApePage: React.FC = () => {
                       <button
                         onClick={() => handlePageChange(currentPage + 1)}
                         disabled={currentPage === getTotalPages()}
-                        className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                        className="px-3 py-1 text-sm border border-ink-300 rounded hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         ›
                       </button>
@@ -1500,7 +1485,7 @@ export const ApePage: React.FC = () => {
                       <button
                         onClick={() => handlePageChange(getTotalPages())}
                         disabled={currentPage === getTotalPages()}
-                        className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                        className="px-3 py-1 text-sm border border-ink-300 rounded hover:bg-ink-100 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         »»
                       </button>
@@ -1510,7 +1495,7 @@ export const ApePage: React.FC = () => {
                 
                 {/* Info pagine */}
                 {getTotalPages() > 1 && (
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                  <div className="text-sm text-ink-500">
                     Pagina {currentPage} di {getTotalPages()}
                   </div>
                 )}
@@ -1525,15 +1510,15 @@ export const ApePage: React.FC = () => {
       {/* Modal Gestione Pratica APE */}
       {showModal && (
         <div className="modal-overlay">
-          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             {/* Header Modal */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+            <div className="flex items-center justify-between p-6 border-b border-ink-200">
+              <h2 className="text-xl font-bold text-ink-900">
                 {editingPratica ? 'Modifica Pratica APE' : 'Nuova Pratica APE'}
               </h2>
               <button
                 onClick={closeModal}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                className="text-ink-400 hover:text-ink-600"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -1544,7 +1529,7 @@ export const ApePage: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Committente *
                     </label>
                     <input
@@ -1553,13 +1538,13 @@ export const ApePage: React.FC = () => {
                       required
                       value={formData.committente}
                       onChange={handleInputChange}
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                       placeholder="Nome del committente"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Proprietà
                     </label>
                     <RubricaAutocomplete
@@ -1578,7 +1563,7 @@ export const ApePage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Proprietà 2
                     </label>
                     <input
@@ -1586,13 +1571,13 @@ export const ApePage: React.FC = () => {
                       name="proprieta2"
                       value={formData.proprieta2}
                       onChange={handleInputChange}
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                       placeholder="Nome secondo proprietario"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Indirizzo
                     </label>
                     <input
@@ -1600,13 +1585,13 @@ export const ApePage: React.FC = () => {
                       name="indirizzo"
                       value={formData.indirizzo}
                       onChange={handleInputChange}
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                       placeholder="Via, numero civico"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Città
                     </label>
                     <input
@@ -1614,7 +1599,7 @@ export const ApePage: React.FC = () => {
                       name="citta"
                       value={formData.citta}
                       onChange={handleInputChange}
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                       placeholder="Città"
                     />
                   </div>
@@ -1622,8 +1607,8 @@ export const ApePage: React.FC = () => {
                   <div className="pt-4">
                     <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${
                       formData.pagamento
-                        ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-300 cursor-pointer'
-                        : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer'
+                        ? 'bg-signal-50 border-signal-500 text-signal-600 cursor-pointer'
+                        : 'bg-ink-50 border-ink-200 text-ink-700 hover:bg-ink-100 cursor-pointer'
                     }`}>
                       <input
                         type="checkbox"
@@ -1634,8 +1619,8 @@ export const ApePage: React.FC = () => {
                       />
                       <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
                         formData.pagamento
-                          ? 'border-blue-500 bg-blue-500'
-                          : 'border-gray-300 dark:border-gray-500 bg-transparent'
+                          ? 'border-signal-500 bg-signal-500'
+                          : 'border-ink-300 bg-transparent'
                       }`}>
                         {formData.pagamento && (
                           <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -1651,7 +1636,7 @@ export const ApePage: React.FC = () => {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Telefono
                     </label>
                     <input
@@ -1659,13 +1644,13 @@ export const ApePage: React.FC = () => {
                       name="telefono"
                       value={formData.telefono}
                       onChange={handleInputChange}
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                       placeholder="XXX XXX XXXX"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Telefono 2
                     </label>
                     <input
@@ -1673,13 +1658,13 @@ export const ApePage: React.FC = () => {
                       name="telefono2"
                       value={formData.telefono2}
                       onChange={handleInputChange}
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                       placeholder="XXX XXX XXXX"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Email
                     </label>
                     <input
@@ -1687,13 +1672,13 @@ export const ApePage: React.FC = () => {
                       name="mail"
                       value={formData.mail}
                       onChange={handleInputChange}
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                       placeholder="email@esempio.com"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Stato Registrazione
                     </label>
                     <div className="relative">
@@ -1701,7 +1686,7 @@ export const ApePage: React.FC = () => {
                         name="registrazione"
                         value={formData.registrazione || ''}
                         onChange={handleInputChange}
-                        className="input w-full pr-8 appearance-none dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        className="input w-full pr-8 appearance-none"
                       >
                         <option value="">-- Seleziona stato --</option>
                         {stati.map((stato) => (
@@ -1710,12 +1695,12 @@ export const ApePage: React.FC = () => {
                           </option>
                         ))}
                       </select>
-                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-ink-400" />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Data Creazione
                     </label>
                     <input
@@ -1723,15 +1708,15 @@ export const ApePage: React.FC = () => {
                       name="created_at"
                       value={formData.created_at}
                       onChange={handleInputChange}
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      className="input w-full"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Progressivo
                       {formData.progressivo && formData.registrazione && stati.find(s => s.id === formData.registrazione && s.descrizione.toLowerCase().includes('completata')) && (
-                        <span className="ml-2 text-xs text-green-600 dark:text-green-400">(generato automaticamente)</span>
+                        <span className="ml-2 text-xs text-topo-600">(generato automaticamente)</span>
                       )}
                     </label>
                     <input
@@ -1739,14 +1724,14 @@ export const ApePage: React.FC = () => {
                       name="progressivo"
                       value={formData.progressivo}
                       onChange={handleInputChange}
-                      className="input w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full"
                       placeholder="Sarà generato automaticamente quando 'Completata'"
                     />
                   </div>
 
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-sm font-medium text-ink-700 mb-1">
                       Note
                     </label>
                     <textarea
@@ -1755,18 +1740,18 @@ export const ApePage: React.FC = () => {
                       onChange={handleInputChange}
                       placeholder="Note aggiuntive"
                       rows={4}
-                      className="input w-full resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"
+                      className="input w-full resize-none"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Bottoni */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex justify-end gap-3 pt-4 border-t border-ink-200">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="btn btn-outline dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                  className="btn btn-outline"
                   disabled={submitting}
                 >
                   Annulla
@@ -1799,37 +1784,37 @@ export const ApePage: React.FC = () => {
         <ContextMenu x={contextMenu.x} y={contextMenu.y}>
           <button
             onClick={() => handleContextMenuAction('edit', contextMenu.pratica!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <Edit className="w-4 h-4 text-blue-500" />
+            <Edit className="w-4 h-4 text-signal-500" />
             Modifica
           </button>
           <button
             onClick={() => handleContextMenuAction('status', contextMenu.pratica!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <ArrowRightCircle className="w-4 h-4 text-yellow-500" />
+            <ArrowRightCircle className="w-4 h-4 text-warning-500" />
             Cambia stato
           </button>
           <button
             onClick={() => handleContextMenuAction('contact', contextMenu.pratica!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <User className="w-4 h-4 text-purple-500" />
+            <User className="w-4 h-4 text-info-500" />
             Contatto
           </button>
-          <div className="my-1 border-t border-gray-200 dark:border-gray-600" />
+          <div className="context-menu-separator" />
           <button
             onClick={() => handleContextMenuAction('duplicate', contextMenu.pratica!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item"
           >
-            <Copy className="w-4 h-4 text-green-500" />
+            <Copy className="w-4 h-4 text-topo-500" />
             Duplica
           </button>
-          <div className="my-1 border-t border-gray-200 dark:border-gray-600" />
+          <div className="context-menu-separator" />
           <button
             onClick={() => handleContextMenuAction('delete', contextMenu.pratica!)}
-            className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="context-menu-item context-menu-danger"
           >
             <Trash2 className="w-4 h-4" />
             Elimina
@@ -1840,14 +1825,14 @@ export const ApePage: React.FC = () => {
       {/* Modal Cambia Stato da Menu Contestuale */}
       {showContextMenuActionModal === 'status' && selectedPraticaForContextMenu && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl">
+            <h3 className="text-lg font-semibold text-ink-900 mb-4">
               Cambia Stato - {selectedPraticaForContextMenu.committente}
             </h3>
             <select
               value={newStatusForContextMenu}
               onChange={(e) => setNewStatusForContextMenu(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-ink-300 rounded-md bg-white text-ink-900 focus:outline-none focus:ring-2 focus:ring-signal-500"
             >
               <option value="">Seleziona stato</option>
               {stati.map((stato) => (
@@ -1862,14 +1847,14 @@ export const ApePage: React.FC = () => {
                   setShowContextMenuActionModal(null);
                   setSelectedPraticaForContextMenu(null);
                 }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-ink-700 bg-white border border-ink-300 rounded-md hover:bg-ink-50 transition-colors"
               >
                 Annulla
               </button>
               <button
                 onClick={handleChangeStatusFromContextMenu}
                 disabled={!newStatusForContextMenu}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-sm font-medium text-white bg-signal-500 border border-transparent rounded-md hover:bg-signal-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-signal-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Conferma
               </button>
@@ -1881,26 +1866,26 @@ export const ApePage: React.FC = () => {
       {/* Modal Contatto da Menu Contestuale */}
       {showContextMenuActionModal === 'contatto' && selectedPraticaForContextMenu && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold text-ink-900 mb-4">
               Contatto - {selectedPraticaForContextMenu.committente}
             </h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proprietario</label>
-                <p className="text-gray-900 dark:text-white">{selectedPraticaForContextMenu.proprieta || '-'}</p>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Proprietario</label>
+                <p className="text-ink-900">{selectedPraticaForContextMenu.proprieta || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Telefono</label>
-                <p className="text-gray-900 dark:text-white">{selectedPraticaForContextMenu.telefono || '-'}</p>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Telefono</label>
+                <p className="text-ink-900">{selectedPraticaForContextMenu.telefono || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-                <p className="text-gray-900 dark:text-white">{selectedPraticaForContextMenu.mail || '-'}</p>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Email</label>
+                <p className="text-ink-900">{selectedPraticaForContextMenu.mail || '-'}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Indirizzo</label>
-                <p className="text-gray-900 dark:text-white">
+                <label className="block text-sm font-medium text-ink-700 mb-1">Indirizzo</label>
+                <p className="text-ink-900">
                   {selectedPraticaForContextMenu.indirizzo || '-'}{selectedPraticaForContextMenu.citta ? `, ${selectedPraticaForContextMenu.citta}` : ''}
                 </p>
               </div>
@@ -1911,7 +1896,7 @@ export const ApePage: React.FC = () => {
                   setShowContextMenuActionModal(null);
                   setSelectedPraticaForContextMenu(null);
                 }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-ink-700 bg-white border border-ink-300 rounded-md hover:bg-ink-50 transition-colors"
               >
                 Chiudi
               </button>

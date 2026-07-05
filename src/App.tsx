@@ -43,7 +43,7 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="dashboard" element={<Navigate to="/" replace />} />
             
-            {/* Placeholder per le altre pagine */}
+            {/* Route pagine */}
             <Route path="planner" element={<Planner />} />
             <Route path="contabilita" element={<Contabilita />} />
             <Route path="fatture-non-contabilizzate" element={<FattureNonContabilizzate />} />
@@ -57,36 +57,38 @@ function App() {
           </Route>
         </Routes>
 
-        {/* Toast notifications */}
+        {/* Toast notifications - Datum v2 style */}
         <Toaster
-          position="top-right"
+          position="bottom-right"
           toastOptions={{
-            duration: 4000,
+            duration: 3000,
             style: {
               background: '#fff',
-              color: '#1f2937',
-              border: '1px solid #e5e7eb',
+              color: '#44403C',
+              border: '1px solid #E7E5E4',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              boxShadow: '0 10px 15px rgba(0, 0, 0, 0.1)',
+              fontSize: '14px',
+              fontFamily: 'IBM Plex Sans, sans-serif',
             },
             success: {
               style: {
-                background: '#dcfce7',
-                color: '#166534',
-                border: '1px solid #bbf7d0',
+                borderLeft: '4px solid #0F766E',
               },
               iconTheme: {
-                primary: '#10b981',
-                secondary: '#dcfce7',
+                primary: '#0F766E',
+                secondary: '#F0FDFA',
               },
             },
             error: {
+              duration: 5000,
               style: {
-                background: '#fef2f2',
-                color: '#991b1b',
-                border: '1px solid #fca5a5',
+                borderLeft: '4px solid #DC2626',
               },
               iconTheme: {
-                primary: '#ef4444',
-                secondary: '#fef2f2',
+                primary: '#DC2626',
+                secondary: '#FEF2F2',
               },
             },
           }}

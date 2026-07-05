@@ -176,7 +176,8 @@ const WeekDropZone: React.FC<WeekDropZoneProps> = ({ direction, isOver, canDrop 
       ref={setNodeRef}
       className={`
         ${positionClasses}
-        transition-all duration-200 pointer-events-auto
+        transition-all duration-200
+        ${canDrop ? 'pointer-events-auto' : 'pointer-events-none'}
         ${canDrop ? 'bg-blue-500/30 border-2 border-blue-500 border-dashed' : 'bg-transparent'}
         ${isOver && canDrop ? 'bg-blue-500/50' : ''}
         flex flex-col items-center justify-center rounded-lg
@@ -826,7 +827,7 @@ export const Planner: React.FC = () => {
   const activeTask = activeId ? tasks.find(task => task.id === activeId) : null;
 
   return (
-    <div className="space-y-6 planner-container">
+    <div className="flex flex-col gap-6 planner-container">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
