@@ -1412,15 +1412,31 @@ export const ApePage: React.FC = () => {
               <tbody className="bg-white divide-y divide-ink-100">
                 {(() => {
                   let currentYear: string | null = null;
+                  const yearCounts: Record<string, number> = {};
+                  const getYearKey = (p: Ape): string => {
+                    if (p.progressivo && /^\d{4}/.test(p.progressivo)) {
+                      return p.progressivo.substring(0, 4);
+                    }
+                    return 'Senza progressivo';
+                  };
+                  pratiche.forEach((p) => {
+                    const y = getYearKey(p);
+                    yearCounts[y] = (yearCounts[y] || 0) + 1;
+                  });
                   return pratiche.flatMap((pratica) => {
-                    const year = new Date(pratica.created_at).getFullYear().toString();
+                    const year = getYearKey(pratica);
                     const rows: JSX.Element[] = [];
                     if (year !== currentYear) {
                       currentYear = year;
+                      const count = yearCounts[year];
                       rows.push(
                         <tr key={`year-${year}`} className="bg-ink-100">
-                          <td colSpan={9} className="px-4 py-2 text-sm font-bold text-ink-700">
-                            {year}
+                          <td colSpan={9} className="px-4 py-2">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-bold text-ink-700">{year}</span>
+                              <span className="text-xs text-ink-500">({count} {count === 1 ? 'APE' : 'APE'})</span>
+                              <div className="flex-1 border-t border-ink-300"></div>
+                            </div>
                           </td>
                         </tr>
                       );
