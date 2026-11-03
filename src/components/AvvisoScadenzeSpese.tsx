@@ -4,6 +4,7 @@ import { AlertTriangle, ChevronRight } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import type { Scadenza } from '../types';
 import { cfg } from '../services/impostazioni';
+import { leggiTutteLeRighe } from '../services/letture';
 
 const giorni = () => cfg().pagine.giorniAvvisoSpese;
 const giorniMancanti = (data: string) => {
@@ -16,22 +17,33 @@ const euro = (n: number) => new Intl.NumberFormat('it-IT', { style: 'currency', 
 
 export const AvvisoScadenzeSpese: React.FC<{ userId?: string }> = ({ userId }) => {
   const [spese, setSpese] = useState<Scadenza[]>([]);
+  const [errore, setErrore] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!userId) return;
+    let attivo = true;
+    setSpese([]);
+    setErrore(false);
     const limite = new Date(Date.now() + giorni() * 86400000).toISOString().split('T')[0];
-    supabase
+    leggiTutteLeRighe<Scadenza>((da, a, conta) => supabase
       .from('scadenze')
-      .select('*')
+      .select('*', { count: conta ? 'exact' : undefined })
       .eq('user_id', userId)
       .eq('pagamento', false)
       .not('data_scadenza', 'is', null)
       .lte('data_scadenza', limite)
       .order('data_scadenza', { ascending: true })
-      .then(({ data }) => setSpese(data || []));
+      .order('id').range(da, a))
+      .then((data) => { if (attivo) setSpese(data); })
+      .catch((e) => {
+        console.error('Errore nel caricamento completo degli avvisi spese:', e);
+        if (attivo) setErrore(true);
+      });
+    return () => { attivo = false; };
   }, [userId]);
 
+  if (errore) return <p className="card p-4 text-sm text-ink-700" role="alert">Avvisi spese non disponibili: impossibile caricare tutti i dati.</p>;
   if (spese.length === 0) return null;
   const totale = spese.reduce((t, s) => t + Number(s.spese), 0);
 

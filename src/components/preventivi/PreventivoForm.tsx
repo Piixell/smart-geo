@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { X, Save, User, Home, Plus, Trash2, Printer, FileCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../services/supabase';
-import { calcolaTotali, normalizzaPreventivo, type Preventivo } from '../../utils/preventivi';
+import { calcolaTotali, creaParametriCalcolo, normalizzaPreventivo, type Preventivo } from '../../utils/preventivi';
 import { esportaPreventivoPdf } from '../../utils/preventivoPdf';
 import { caricaPrestazioni, type Prestazione } from '../PrestazioniSection';
 import { VociPreventivo } from './VociPreventivo';
@@ -47,7 +47,14 @@ export const PreventivoForm: React.FC<Props> = ({ iniziale, onClose, onSaved }) 
     caricaPrestazioni().then(setPrestazioni).catch(() => toast.error('Errore nel caricamento delle prestazioni'));
   }, []);
 
-  const set = <K extends keyof Preventivo>(k: K, v: Preventivo[K]) => setP((prev) => ({ ...prev, [k]: v }));
+  const set = <K extends keyof Preventivo>(k: K, v: Preventivo[K]) => setP((prev) => {
+    const aggiornato = { ...prev, [k]: v };
+    if (k === 'data' && !prev.id && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+      && Number(v.slice(0, 4)) >= 1900 && Number(v.slice(0, 4)) <= 9999) {
+      aggiornato.parametri_calcolo = creaParametriCalcolo(v);
+    }
+    return aggiornato;
+  });
   const localitaCliente = (s: SuggerimentoMappa) => setP((prev) => ({
     ...prev,
     citta_cliente: (s.citta || prev.citta_cliente || '').toUpperCase(),
@@ -63,34 +70,49 @@ export const PreventivoForm: React.FC<Props> = ({ iniziale, onClose, onSaved }) 
   const setNome = (i: number, v: string) => setNomi(nomi.map((n, k) => (k === i ? v.toUpperCase() : n)));
 
   const salva = async (poiPdf = false, firmaDigitale = false) => {
+    if (salvando) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(p.data) || Number(p.data.slice(0, 4)) < 1900 || Number(p.data.slice(0, 4)) > 9999) {
+      return toast.error('Inserisci una data valida per il preventivo');
+    }
     if (!p.cliente.trim()) return toast.error('Inserisci il cliente');
     if (!p.citta_immobile.trim()) return toast.error("Inserisci la città dell'immobile");
     if (!p.indirizzo_immobile.trim()) return toast.error("Inserisci l'indirizzo dell'immobile");
     if (p.voci.length === 0) return toast.error('Aggiungi almeno una prestazione');
-    const userId = await richiediIdUtente();
     setSalvando(true);
-    const id = p.id;
-    const dati = { ...p };
-    delete dati.id;
-    delete dati.created_at;
-    const payload = { ...dati, user_id: userId, cliente: nomi.map((n) => n.trim()).filter(Boolean).join('\n'), saluto: salutoAutomatico(p.cliente), oggetto: oggettoAutomatico(p.citta_immobile, p.indirizzo_immobile), updated_at: new Date().toISOString() };
-    const { data, error } = id
-      ? await supabase.from('preventivi').update(payload).eq('id', id).eq('user_id', userId).select().single()
-      : await supabase.from('preventivi').insert([payload]).select().single();
-    setSalvando(false);
-    if (error) return toast.error('Errore nel salvataggio del preventivo');
-    toast.success('Preventivo salvato');
-    if (poiPdf) await esportaPreventivoPdf(data as Preventivo, firmaDigitale);
-    onSaved();
+    try {
+      const userId = await richiediIdUtente();
+      const id = p.id;
+      const dati = { ...p };
+      delete dati.id;
+      delete dati.created_at;
+      const payload = { ...dati, user_id: userId, cliente: nomi.map((n) => n.trim()).filter(Boolean).join('\n'), saluto: salutoAutomatico(p.cliente), oggetto: oggettoAutomatico(p.citta_immobile, p.indirizzo_immobile), updated_at: new Date().toISOString() };
+      const { data, error } = id
+        ? await supabase.from('preventivi').update(payload).eq('id', id).eq('user_id', userId).select().single()
+        : await supabase.from('preventivi').insert([payload]).select().single();
+      if (error) throw error;
+      toast.success('Preventivo salvato');
+      if (poiPdf) await esportaPreventivoPdf(data as Preventivo, firmaDigitale);
+      onSaved();
+    } catch (errore) {
+      console.error('Errore nel salvataggio o esportazione del preventivo:', errore);
+      toast.error('Operazione non riuscita. Verifica il salvataggio del preventivo prima di riprovare.');
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-2 sm:p-6" data-testid="preventivo-form">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-900/45 backdrop-blur-sm p-2 sm:p-6" data-testid="preventivo-form">
       <div className="w-full max-w-5xl rounded-xl bg-white shadow-xl dark:bg-gray-800">
         <header className="flex items-center justify-between border-b border-ink-100 px-6 py-4 dark:border-gray-700">
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">{p.id ? `Preventivo n° ${p.numero} - ${nomeCliente(p.cliente)}` : `Nuovo preventivo n° ${p.numero}`}</h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-700" data-testid="preventivo-chiudi"><X className="h-6 w-6" /></button>
         </header>
+        {p.parametri_calcolo?.origine === 'ricostruzione' && (
+          <p className="mx-6 mt-4 rounded-md bg-ink-100 p-3 text-sm text-ink-700" role="status">
+            Per questo preventivo precedente all’aggiornamento, il calcolo è stato ricostruito con i parametri disponibili. Verifica gli importi rispetto al documento originale.
+          </p>
+        )}
 
         <div className="space-y-6 px-6 py-5">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -166,7 +188,7 @@ export const PreventivoForm: React.FC<Props> = ({ iniziale, onClose, onSaved }) 
               </div>
               {t.scontoImporto > 0 && <div className="flex justify-between py-1 font-medium text-ink-800 dark:text-gray-200"><span>Onorario scontato</span><span className="tabular-nums" data-testid="preventivo-onorario-scontato">{euro(t.onorario)}</span></div>}
               {t.scontoImporto > 0 && <div className="flex justify-between py-1 text-xs text-red-600"><span>Sconto C.I.P.A.G.</span><span className="tabular-nums">-{euro(t.scontoCassa)}</span></div>}
-              {[['C.I.P.A.G. 5%', t.cassa], ['Spese anticipate per Vs conto', t.spese]].map(([l, v]) => (
+              {[[`C.I.P.A.G. ${t.percentualeCassa}%`, t.cassa], ['Spese anticipate per Vs conto', t.spese]].map(([l, v]) => (
                 <div key={l as string} className="flex justify-between py-1 text-ink-600 dark:text-gray-300"><span>{l}</span><span className="tabular-nums">{euro(v as number)}</span></div>
               ))}
               <div className="py-1" data-testid="preventivo-rate">

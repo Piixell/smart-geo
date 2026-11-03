@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Filter, RotateCcw, Edit, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from '../store/authStore';
@@ -8,6 +8,9 @@ import toast from 'react-hot-toast';
 import { sincronizzaTasseInSpese } from '../utils/tasseSync';
 import { aliquotaTasse, coefficienteRedditivita, quotaCassa } from '../utils/aliquotaTasse';
 import { cfg } from '../services/impostazioni';
+import { leggiTutteLeRighe } from '../services/letture';
+
+const TOTALI_VUOTI = { onorario: 0, spese: 0, bolli: 0, cassaGeometri: 0, tasse: 0, fatturato: 0, guadagnoNetto: 0 };
 
 export const Contabilita: React.FC = () => {
  const [fatture, setFatture] = useState<Fattura[]>([]);
@@ -15,6 +18,16 @@ export const Contabilita: React.FC = () => {
  const [loading, setLoading] = useState(true);
  const [filtroMese, setFiltroMese] = useState('');
  const [filtroAnno, setFiltroAnno] = useState(() => new Date().getFullYear().toString());
+ const [filtriApplicati, setFiltriApplicati] = useState(() => ({ mese: '', anno: new Date().getFullYear().toString() }));
+ const [erroreCaricamento, setErroreCaricamento] = useState<string | null>(null);
+ const [versioneDati, setVersioneDati] = useState(0);
+ const sequenzaLetture = useRef(0);
+ const interrompiLetture = useCallback(() => { sequenzaLetture.current++; }, []);
+ const richiediRicaricamento = useCallback(() => {
+   interrompiLetture();
+   setLoading(true);
+   setVersioneDati((n) => n + 1);
+ }, [interrompiLetture]);
  const [showModal, setShowModal] = useState(false);
  const [saving, setSaving] = useState(false);
  const [editingId, setEditingId] = useState<number | null>(null);
@@ -28,15 +41,7 @@ export const Contabilita: React.FC = () => {
  const [totalRecords, setTotalRecords] = useState(0);
  
  // Totalizzatori
- const [totals, setTotals] = useState({
- onorario: 0,
- spese: 0,
- bolli: 0,
- cassaGeometri: 0,
- tasse: 0,
- fatturato: 0,
- guadagnoNetto: 0
- });
+ const [totals, setTotals] = useState(TOTALI_VUOTI);
  
   const { user } = useAuthStore();
 
@@ -69,18 +74,14 @@ export const Contabilita: React.FC = () => {
  // Opzioni records per pagina
  const recordsPerPageOptions = [10, 25, 50, 100, 300, 500];
 
- const fetchAnniDisponibili = async () => {
+ const fetchAnniDisponibili = useCallback(async () => {
+ if (!user?.id) return;
  try {
- const { data, error } = await supabase
+ const data = await leggiTutteLeRighe<{ anno_fattura: number }>((da, a, conta) => supabase
  .from('fatture')
- .select('anno_fattura')
+ .select('anno_fattura', { count: conta ? 'exact' : undefined })
  .eq('user_id', user?.id)
- .not('anno_fattura', 'is', null);
-
- if (error) {
- console.error('Errore nel caricamento anni:', error);
- return;
- }
+ .not('anno_fattura', 'is', null).order('id').range(da, a));
 
  // Estrae gli anni unici e li ordina in decrescente
  const anniUnici = [...new Set(data?.map(f => f.anno_fattura).filter(Boolean))] as number[];
@@ -89,46 +90,23 @@ export const Contabilita: React.FC = () => {
  } catch (error) {
  console.error('Errore:', error);
  }
- };
+ }, [user?.id]);
 
- const fetchFatture = async () => {
+ const fetchFatture = useCallback(async () => {
+ if (!user?.id) return;
+ const richiesta = ++sequenzaLetture.current;
  try {
  setLoading(true);
+ setErroreCaricamento(null);
  
- // Query per contare i record totali
- let countQuery = supabase
- .from('fatture')
- .select('*', { count: 'exact', head: true })
- .eq('user_id', user?.id);
-
- // Query per i dati - senza range, ordinamento fatto in JS
- let dataQuery = supabase
- .from('fatture')
- .select('*')
- .eq('user_id', user?.id);
-
- // Applica filtri
- if (filtroMese) {
- countQuery = countQuery.eq('mese_fattura', filtroMese);
- dataQuery = dataQuery.eq('mese_fattura', filtroMese);
- }
-
- if (filtroAnno) {
- countQuery = countQuery.eq('anno_fattura', parseInt(filtroAnno));
- dataQuery = dataQuery.eq('anno_fattura', parseInt(filtroAnno));
- }
-
- // Esegui le query
- const [{ count }, { data, error }] = await Promise.all([
- countQuery,
- dataQuery
- ]);
-
- if (error) {
- console.error('Errore nel caricamento fatture:', error);
- toast.error('Errore nel caricamento delle fatture');
- return;
- }
+ // Legge tutte le pagine prima di calcolare totali annuali e mensili.
+ const data = await leggiTutteLeRighe<Fattura>((da, a, conta) => {
+   let query = supabase.from('fatture').select('*', { count: conta ? 'exact' : undefined }).eq('user_id', user.id);
+   if (filtriApplicati.mese) query = query.eq('mese_fattura', filtriApplicati.mese);
+   if (filtriApplicati.anno) query = query.eq('anno_fattura', Number(filtriApplicati.anno));
+   return query.order('id').range(da, a);
+ });
+ if (richiesta !== sequenzaLetture.current) return;
 
  // Ordina per anno desc, mese desc, numero_fattura desc
  const meseOrder: Record<string, number> = {
@@ -149,13 +127,15 @@ export const Contabilita: React.FC = () => {
  });
 
  // Applica paginazione in JavaScript
- const start = (currentPage - 1) * recordsPerPage;
+ const pagina = Math.min(currentPage, Math.max(1, Math.ceil(sortedData.length / recordsPerPage)));
+ if (pagina !== currentPage) setCurrentPage(pagina);
+ const start = (pagina - 1) * recordsPerPage;
  const end = start + recordsPerPage;
  const paginatedData = sortedData.slice(start, end);
 
  setFatture(paginatedData);
 setTutteFatture(sortedData);
- setTotalRecords(count || 0);
+ setTotalRecords(sortedData.length);
  
  // Calcola i totali (su tutti i dati filtrati, non solo la pagina corrente)
  const totaleOnorario = sortedData.reduce((sum, fattura) => sum + (fattura.onorario || 0), 0);
@@ -181,12 +161,17 @@ setTutteFatture(sortedData);
  }
 
  } catch (error) {
+ if (richiesta !== sequenzaLetture.current) return;
  console.error('Errore:', error);
- toast.error('Errore nel caricamento dei dati');
+ setErroreCaricamento('Impossibile caricare tutte le fatture. Premi Filtra per riprovare.');
+ setFatture([]);
+ setTutteFatture([]);
+ setTotalRecords(0);
+ setTotals(TOTALI_VUOTI);
  } finally {
- setLoading(false);
+ if (richiesta === sequenzaLetture.current) setLoading(false);
  }
- };
+ }, [user?.id, filtriApplicati, currentPage, recordsPerPage]);
 
  const loadParametriTasse = async () => {
  try {
@@ -252,16 +237,11 @@ setTutteFatture(sortedData);
  console.log('[DEBUG FATTURA] Cerco ultimo numero per anno:', anno, '| user_id:', user?.id);
  
  // Prendi tutti i numeri fattura per l'anno (numero_fattura è varchar, ordine alfabetico non funziona)
- const { data, error } = await supabase
+ const data = await leggiTutteLeRighe<{ numero_fattura: string }>((da, a, conta) => supabase
  .from('fatture')
- .select('numero_fattura')
+ .select('numero_fattura', { count: conta ? 'exact' : undefined })
  .eq('user_id', user?.id)
- .eq('anno_fattura', anno);
-
- if (error) {
- console.error('[DEBUG FATTURA] Errore nel recupero ultimo numero fattura:', error);
- return 1;
- }
+ .eq('anno_fattura', anno).order('id').range(da, a));
 
  console.log('[DEBUG FATTURA] Risultato query:', data);
 
@@ -285,16 +265,18 @@ setTutteFatture(sortedData);
  return 1;
  } catch (error) {
  console.error('[DEBUG FATTURA] Errore:', error);
- return 1;
+ throw error;
  }
  };
 
  useEffect(() => {
- if (user?.id) {
  fetchAnniDisponibili();
+ }, [fetchAnniDisponibili, versioneDati]);
+
+ useEffect(() => {
  fetchFatture();
- }
- }, [user?.id, currentPage, recordsPerPage]);
+ return interrompiLetture;
+ }, [fetchFatture, interrompiLetture, versioneDati]);
 
  // Chiudi menu contestuale quando si clicca fuori o si preme Escape
  useEffect(() => {
@@ -322,20 +304,33 @@ setTutteFatture(sortedData);
  }, [parametroTasse]);
 
  const handleFilter = () => {
+ interrompiLetture();
+ setLoading(true);
  setCurrentPage(1); // Reset alla prima pagina quando si filtra
- fetchFatture();
+ setFiltriApplicati({ mese: filtroMese, anno: filtroAnno });
  };
 
  const handleReset = () => {
+ interrompiLetture();
+ setLoading(true);
  setFiltroMese('');
  setFiltroAnno('');
  setCurrentPage(1);
+ setFiltriApplicati({ mese: '', anno: '' });
  };
 
  const handleRecordsPerPageChange = (newValue: number) => {
+ interrompiLetture();
+ setLoading(true);
  setRecordsPerPage(newValue);
  setCurrentPage(1);
  localStorage.setItem('contabilita_records_per_page_v2', newValue.toString());
+ };
+
+ const cambiaPagina = (pagina: number) => {
+   interrompiLetture();
+   setLoading(true);
+   setCurrentPage(pagina);
  };
 
  // Calcoli automatici
@@ -384,14 +379,14 @@ setTutteFatture(sortedData);
  };
  };
 
- const handleFormChange = (field: string, value: any) => {
+  const handleFormChange = <TCampo extends keyof typeof formData>(field: TCampo, value: (typeof formData)[TCampo]) => {
  const newFormData = { ...formData, [field]: value };
  
  // Se cambia onorario o spese, ricalcola tutti i valori
  if (field === 'onorario' || field === 'spese') {
  const calculatedValues = calculateValues(
- field === 'onorario' ? value : formData.onorario,
- field === 'spese' ? value : formData.spese
+  newFormData.onorario,
+  newFormData.spese
  );
  
  Object.assign(newFormData, calculatedValues);
@@ -539,8 +534,7 @@ setTutteFatture(sortedData);
 
  setShowModal(false);
  setEditingId(null);
- fetchAnniDisponibili();
- fetchFatture();
+  richiediRicaricamento();
  } catch (error) {
  console.error('Errore:', error);
  toast.error('Errore nel salvataggio');
@@ -567,8 +561,7 @@ setTutteFatture(sortedData);
  }
 
  toast.success('Fattura eliminata con successo');
- fetchAnniDisponibili();
- fetchFatture();
+  richiediRicaricamento();
  } catch (error) {
  console.error('Errore:', error);
  toast.error('Errore nell\'eliminazione');
@@ -697,20 +690,20 @@ setTutteFatture(sortedData);
  {/* Info paginazione */}
  <div className="flex items-center justify-between text-sm text-ink-600">
  <div>
- Mostrando {fatture.length > 0 ? (currentPage - 1) * recordsPerPage + 1 : 0} - {Math.min(currentPage * recordsPerPage, totalRecords)} di {totalRecords} record
+ {loading ? 'Caricamento dati…' : <>Mostrando {fatture.length > 0 ? (currentPage - 1) * recordsPerPage + 1 : 0} - {Math.min(currentPage * recordsPerPage, totalRecords)} di {totalRecords} record</>}
  </div>
  <div className="flex items-center gap-2">
  <button
- onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
- disabled={currentPage === 1}
+ onClick={() => cambiaPagina(Math.max(currentPage - 1, 1))}
+ disabled={loading || currentPage === 1}
  className="btn btn-outline btn-sm disabled:opacity-50"
  >
  <ChevronLeft className="w-4 h-4" />
  </button>
  <span>Pagina {currentPage} di {totalPages}</span>
  <button
- onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
- disabled={currentPage === totalPages}
+ onClick={() => cambiaPagina(Math.min(currentPage + 1, totalPages))}
+ disabled={loading || currentPage === totalPages}
  className="btn btn-outline btn-sm disabled:opacity-50"
  >
  <ChevronRight className="w-4 h-4" />
@@ -766,6 +759,8 @@ setTutteFatture(sortedData);
  </div>
  </td>
  </tr>
+ ) : erroreCaricamento ? (
+ <tr><td colSpan={10} className="px-6 py-8 text-center text-ink-700" role="alert">{erroreCaricamento}</td></tr>
  ) : fatture.length === 0 ? (
  <tr>
  <td colSpan={10} className="px-6 py-8 text-center text-ink-500">
@@ -896,11 +891,11 @@ setTutteFatture(sortedData);
  )}
  </tbody>
  {/* Totalizzatore */}
- {fatture.length > 0 && (
+ {!loading && !erroreCaricamento && fatture.length > 0 && (
   <tfoot className="sticky bottom-0 z-10 bg-signal-200  border-t-2 border-signal-400 shadow-[0_-2px_6px_rgba(0,0,0,0.08)]" data-testid="totale-anno-row">
  <tr>
  <td className="px-6 py-4 text-[15px] font-bold [-webkit-text-stroke:0.5px_currentColor] uppercase tracking-wide text-signal-900 dark:text-white border-l-4 border-signal-600" colSpan={3}>
- {filtroAnno ? `Totale anno ${filtroAnno}` : 'Totale complessivo'}
+ {filtriApplicati.anno ? `Totale anno ${filtriApplicati.anno}` : 'Totale complessivo'}
  </td>
  <td className="px-6 py-4 text-[15px] font-bold [-webkit-text-stroke:0.5px_currentColor] text-signal-900 dark:text-white">
  {formatCurrency(totals.onorario)}
@@ -1179,4 +1174,4 @@ setTutteFatture(sortedData);
  );
 };
 
-export default Contabilita; 
+export default Contabilita;

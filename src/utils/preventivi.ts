@@ -18,6 +18,15 @@ export interface SpesaInterna {
 
 export type StatoPreventivo = 'bozza' | 'inviato' | 'accettato' | 'rifiutato';
 
+export interface ParametriCalcoloPreventivo {
+  versione: 1;
+  anno: number;
+  cassa: number;
+  coefficiente: number;
+  aliquota: number;
+  origine: 'salvataggio' | 'ricostruzione';
+}
+
 export interface Preventivo {
   id?: number;
   created_at?: string;
@@ -41,6 +50,7 @@ export interface Preventivo {
   sconto?: number;
   note: string;
   stato: StatoPreventivo;
+  parametri_calcolo?: ParametriCalcoloPreventivo | null;
 }
 
 export const STATI_PREVENTIVO: { id: StatoPreventivo; label: string; classe: string }[] = [
@@ -61,21 +71,46 @@ export const notePredefinite = () => cfg().preventivi.note;
 const n = (v: unknown) => Number(v) || 0;
 const arrotonda = (v: number) => Math.round(v * 100) / 100;
 
+export const creaParametriCalcolo = (
+  data: string,
+  origine: ParametriCalcoloPreventivo['origine'] = 'salvataggio',
+): ParametriCalcoloPreventivo => {
+  const anno = Number(data.slice(0, 4));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || anno < 1900 || anno > 9999) {
+    throw new Error('Data del preventivo non valida');
+  }
+  const { cassa, coefficiente } = cfg().fisco;
+  return { versione: 1, anno, cassa, coefficiente, aliquota: aliquotaTasse(anno) * 100, origine };
+};
+
+type DatiCalcolo = Pick<Preventivo, 'id' | 'data' | 'voci' | 'spese_interne' | 'bollo' | 'sconto' | 'parametri_calcolo'>;
+
+const parametriDelPreventivo = (p: DatiCalcolo): ParametriCalcoloPreventivo => {
+  const parametri = p.parametri_calcolo;
+  if (parametri == null) return creaParametriCalcolo(p.data, p.id ? 'ricostruzione' : 'salvataggio');
+  if (parametri.versione !== 1 || !Number.isInteger(parametri.anno) || parametri.anno < 1900 || parametri.anno > 9999
+    || !['salvataggio', 'ricostruzione'].includes(parametri.origine)
+    || ![parametri.cassa, parametri.coefficiente, parametri.aliquota].every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100)) {
+    throw new Error('Parametri di calcolo del preventivo non validi');
+  }
+  return parametri;
+};
+
 // Tasse = (onorario + bollo) × coefficiente × aliquota dell'anno; spese al cliente arrotondate all'euro superiore
-export const calcolaTotali = (p: Pick<Preventivo, 'voci' | 'spese_interne' | 'bollo'> & { sconto?: number }) => {
-  const { cassa: pCassa, coefficiente } = cfg().fisco;
+export const calcolaTotali = (p: DatiCalcolo) => {
+  const { cassa: pCassa, coefficiente, aliquota } = parametriDelPreventivo(p);
   const quotaCassa = pCassa / 100;
   const onorarioLordo = arrotonda(p.voci.reduce((t, v) => t + n(v.onorario), 0));
   const scontoImporto = arrotonda(Math.min(onorarioLordo, Math.max(0, n(p.sconto))));
   const onorario = arrotonda(onorarioLordo - scontoImporto);
   const bollo = n(p.bollo);
   const cassa = arrotonda(onorario * quotaCassa);
-  const tasse = arrotonda((onorario + bollo) * (coefficiente / 100) * aliquotaTasse(new Date().getFullYear()));
+  const tasse = arrotonda((onorario + bollo) * (coefficiente / 100) * (aliquota / 100));
   const perCategoria = Object.fromEntries(CATEGORIE_SPESE.map((c) => [c.id, arrotonda((p.spese_interne || []).filter((s) => s.categoria === c.id).reduce((t, s) => t + n(s.importo), 0))])) as Record<CategoriaSpesaInterna, number>;
   const speseEsatte = arrotonda(Object.values(perCategoria).reduce((t, v) => t + v, 0) + tasse);
   const spese = Math.ceil(speseEsatte - 0.0001);
   const cassaLorda = arrotonda(onorarioLordo * quotaCassa);
-  return { onorarioLordo, scontoImporto, cassaLorda, scontoCassa: arrotonda(cassaLorda - arrotonda(onorario * quotaCassa)), onorario, cassa, bollo, tasse, perCategoria, speseEsatte, spese, totale: arrotonda(onorario + cassa + spese + bollo) };
+  return { onorarioLordo, scontoImporto, cassaLorda, percentualeCassa: pCassa, scontoCassa: arrotonda(cassaLorda - arrotonda(onorario * quotaCassa)), onorario, cassa, bollo, tasse, perCategoria, speseEsatte, spese, totale: arrotonda(onorario + cassa + spese + bollo) };
 };
 
 export const prossimoNumero = async (userId: string, anno: number) => {
@@ -92,14 +127,14 @@ export const normalizzaPreventivo = (p: Preventivo): Preventivo => {
   RIGHE_SPESE_DEFAULT.forEach(([categoria, n]) => {
     for (let i = spese.filter((s) => s.categoria === categoria).length; i < n; i++) spese.push({ categoria, descrizione: '', importo: 0 });
   });
-  const righe = (p.note || notePredefinite()).split('\n');
+  const righe = (p.note ?? notePredefinite()).split('\n');
   let dopoDuePunti = false;
   const note = righe.some((r) => /^\s*-/.test(r)) ? righe.join('\n') : righe.map((r) => {
     const sotto = dopoDuePunti;
     if (r.trim().endsWith(':')) dopoDuePunti = true;
     return sotto && r.trim() ? `- ${r.trim()}` : r;
   }).join('\n');
-  return { ...p, spese_interne: spese, note };
+  return { ...p, spese_interne: spese, note, parametri_calcolo: parametriDelPreventivo(p) };
 };
 
 const SPESE_PREDEFINITE: [CategoriaSpesaInterna, string, number][] = [

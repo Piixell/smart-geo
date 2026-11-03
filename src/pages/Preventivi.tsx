@@ -37,7 +37,7 @@ export const Preventivi: React.FC = () => {
   const nuovo = async (base?: Preventivo) => {
     if (!user?.id) return;
     const numero = await prossimoNumero(user.id, new Date().getFullYear());
-    setAperto(base ? { ...base, id: undefined, created_at: undefined, numero, data: new Date().toISOString().split('T')[0], stato: 'bozza' } : preventivoVuoto(numero));
+    setAperto(base ? { ...base, id: undefined, created_at: undefined, parametri_calcolo: undefined, numero, data: new Date().toISOString().split('T')[0], stato: 'bozza' } : preventivoVuoto(numero));
   };
 
   const cambiaStato = async (p: Preventivo, stato: StatoPreventivo) => {

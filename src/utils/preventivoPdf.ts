@@ -33,6 +33,7 @@ const M = 16;
 const FONDO = 262;
 
 export const esportaPreventivoPdf = async (p: Preventivo, firmaDigitale = false) => {
+  p = normalizzaPreventivo(p);
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   // jsPDF sottostima i caratteri non ASCII (À, °, €): si misura la versione senza accenti
   const larg = (s: string) => doc.getTextWidth(s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/°/g, 'o').replace(/€/g, 'C'));
@@ -129,7 +130,7 @@ export const esportaPreventivoPdf = async (p: Preventivo, firmaDigitale = false)
   const conSconto = t.scontoImporto > 0;
   const righeTab = [
     ['Onorario', importo(t.onorarioLordo), importo(t.scontoImporto), importo(t.onorario)],
-    ['C.I.P.A.G. 5%', importo(t.cassaLorda), importo(t.scontoCassa), importo(t.cassa)],
+    [`C.I.P.A.G. ${t.percentualeCassa}%`, importo(t.cassaLorda), importo(t.scontoCassa), importo(t.cassa)],
     ['Spese anticipate per Vs conto', importo(t.spese), '-', importo(t.spese)],
     ['Imposta di bollo', importo(t.bollo), '-', importo(t.bollo)],
   ].map((r) => (conSconto ? r : [r[0], '', r[3]]));

@@ -2,6 +2,7 @@ import { supabase } from '../services/supabase';
 import { calcolaTotali, type Preventivo, type StatoPreventivo } from './preventivi';
 import type { Scadenza } from '../types';
 import { cfg } from '../services/impostazioni';
+import { leggiTutteLeRighe } from '../services/letture';
 
 export type Sezione = 'comune' | 'varie' | 'ape';
 
@@ -44,6 +45,11 @@ const STATI_VARIE: Record<number, string> = { 1: 'Da fare', 2: 'In attesa', 3: '
 const STATI_APE: Record<number, string> = { 1: 'Da fare', 2: 'Pronta', 3: 'Completata', 4: 'Annullata' };
 
 type Riga = { id: number; committente?: string; proprieta?: string; indirizzo?: string; citta?: string; created_at: string; updated_at?: string; acconto?: boolean };
+type RigaComune = Riga & { stato: number; saldo: boolean; omaggio: boolean };
+type RigaVarie = Riga & { registrazione: number; saldo: boolean; omaggio: boolean };
+type RigaApe = Riga & { registrazione: number; pagamento: boolean; omaggio: boolean };
+type FatturaDashboard = { anno_fattura: number; mese_fattura: string; fatturato: number; onorario: number | null };
+type PreventivoDashboard = Pick<Preventivo, 'id' | 'data' | 'stato' | 'voci' | 'spese_interne' | 'bollo' | 'sconto' | 'parametri_calcolo'>;
 
 const mappa = (r: Riga, sezione: Sezione, statoId: number, etichette: Record<number, string>): PraticaDash => ({
   id: r.id,
@@ -73,25 +79,38 @@ export const caricaDashboard = async (userId: string): Promise<DashboardData> =>
   const campi = 'id, committente, proprieta, indirizzo, citta, created_at, omaggio';
   const limiteScadenze = new Date(Date.now() + giorniScadenze() * 86400000).toISOString().split('T')[0];
   const [cc, varie, ape, fatture, prev, scad] = await Promise.all([
-    supabase.from('comune_catasto').select(`${campi}, updated_at, stato, acconto, saldo`).eq('user_id', userId).limit(10000),
-    supabase.from('varie').select(`${campi}, registrazione, acconto, saldo`).eq('user_id', userId).limit(10000),
-    supabase.from('ape').select(`${campi}, updated_at, registrazione, pagamento`).eq('user_id', userId).limit(10000),
-    supabase.from('fatture').select('anno_fattura, mese_fattura, fatturato, onorario').eq('user_id', userId).gte('anno_fattura', anno - 1).limit(10000),
-    supabase.from('preventivi').select('data, stato, voci, spese_interne, bollo, sconto').eq('user_id', userId).limit(10000),
-    supabase.from('scadenze').select('*').eq('user_id', userId).eq('pagamento', false).not('data_scadenza', 'is', null).lte('data_scadenza', limiteScadenze).order('data_scadenza', { ascending: true }),
+    leggiTutteLeRighe<RigaComune>((da, a, conta) => supabase.from('comune_catasto')
+      .select(`${campi}, updated_at, stato, acconto, saldo`, { count: conta ? 'exact' : undefined })
+      .eq('user_id', userId).order('id').range(da, a)),
+    leggiTutteLeRighe<RigaVarie>((da, a, conta) => supabase.from('varie')
+      .select(`${campi}, registrazione, acconto, saldo`, { count: conta ? 'exact' : undefined })
+      .eq('user_id', userId).order('id').range(da, a)),
+    leggiTutteLeRighe<RigaApe>((da, a, conta) => supabase.from('ape')
+      .select(`${campi}, updated_at, registrazione, pagamento`, { count: conta ? 'exact' : undefined })
+      .eq('user_id', userId).order('id').range(da, a)),
+    leggiTutteLeRighe<FatturaDashboard>((da, a, conta) => supabase.from('fatture')
+      .select('anno_fattura, mese_fattura, fatturato, onorario', { count: conta ? 'exact' : undefined })
+      .eq('user_id', userId).gte('anno_fattura', anno - 1).order('id').range(da, a)),
+    leggiTutteLeRighe<PreventivoDashboard>((da, a, conta) => supabase.from('preventivi')
+      .select('id, data, stato, voci, spese_interne, bollo, sconto, parametri_calcolo', { count: conta ? 'exact' : undefined })
+      .eq('user_id', userId).order('id').range(da, a)),
+    leggiTutteLeRighe<Scadenza>((da, a, conta) => supabase.from('scadenze')
+      .select('*', { count: conta ? 'exact' : undefined }).eq('user_id', userId).eq('pagamento', false)
+      .not('data_scadenza', 'is', null).lte('data_scadenza', limiteScadenze)
+      .order('data_scadenza').order('id').range(da, a)),
   ]);
-  const preventivi = (prev.data || []) as Preventivo[];
+  const preventivi = prev;
   const conteggi = { bozza: 0, inviato: 0, accettato: 0, rifiutato: 0 } as Record<StatoPreventivo, number>;
   preventivi.forEach((p) => { conteggi[p.stato] = (conteggi[p.stato] || 0) + 1; });
-  const totale = (l: Preventivo[]) => l.reduce((t, p) => t + calcolaTotali(p).totale, 0);
+  const totale = (l: PreventivoDashboard[]) => l.reduce((t, p) => t + calcolaTotali(p).totale, 0);
 
-  const rCC = (cc.data || []).map((r) => ({ r, p: mappa(r, 'comune', r.stato, STATI_CC) }));
-  const rVarie = (varie.data || []).map((r) => ({ r, p: mappa(r, 'varie', r.registrazione, STATI_VARIE) }));
-  const rApe = (ape.data || []).map((r) => ({ r, p: mappa(r, 'ape', r.registrazione, STATI_APE) }));
+  const rCC = cc.map((r) => ({ r, p: mappa(r, 'comune', r.stato, STATI_CC) }));
+  const rVarie = varie.map((r) => ({ r, p: mappa(r, 'varie', r.registrazione, STATI_VARIE) }));
+  const rApe = ape.map((r) => ({ r, p: mappa(r, 'ape', r.registrazione, STATI_APE) }));
   const tutte = [...rCC, ...rVarie, ...rApe];
 
-  const fattAnno = (fatture.data || []).filter((f) => f.anno_fattura === anno);
-  const perMese = (a: number) => MESI.map((m) => somma((fatture.data || []).filter((f) => f.anno_fattura === a && f.mese_fattura === m), 'fatturato'));
+  const fattAnno = fatture.filter((f) => f.anno_fattura === anno);
+  const perMese = (a: number) => MESI.map((m) => somma(fatture.filter((f) => f.anno_fattura === a && f.mese_fattura === m), 'fatturato'));
 
   const daIncassare = [
     ...rCC.filter(({ r }) => r.stato === 3 && !r.saldo && !r.omaggio),
@@ -112,6 +131,6 @@ export const caricaDashboard = async (userId: string): Promise<DashboardData> =>
       accettatiAnno: totale(preventivi.filter((p) => p.stato === 'accettato' && p.data?.startsWith(String(anno)))),
       inAttesa: totale(preventivi.filter((p) => p.stato === 'inviato')),
     },
-    scadenze: (scad.data || []) as Scadenza[],
+    scadenze: scad,
   };
 };

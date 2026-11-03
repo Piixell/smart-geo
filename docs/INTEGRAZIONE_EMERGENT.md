@@ -21,8 +21,9 @@ Il database remoto non è stato modificato. Prima di usare questa versione sul d
 1. Eseguire un backup PostgreSQL completo del database attuale.
 2. Verificare che sia già applicata `supabase/migrations/202610050001_stati_varie.sql`. È una migrazione preesistente: non sostituire tabelle con nomi simili né eseguire di nuovo gli script di creazione iniziali del repository.
 3. Applicare nel SQL Editor del progetto corretto `supabase/migrations/202611030001_integrazione_emergent.sql`.
-4. Eseguire `supabase/verifiche_sicurezza.sql`: verificare RLS, assenza di privilegi anonimi e regole di proprietà. Per le due RPC `esegue_come_proprietario` ed `eseguibile_anonimamente` devono essere false.
-5. Provare con un account reale lettura/salvataggio di preventivi, pratiche, spese, impostazioni e scaricamento PDF/backup.
+4. Applicare anche `supabase/migrations/202611030002_correzioni_preventivi.sql`, prima di usare il frontend con le correzioni dell'audit. Aggiunge `note` e conserva i parametri dei documenti: dettagli e limiti dello storico in [CORREZIONI_PRIORITA_AUDIT.md](CORREZIONI_PRIORITA_AUDIT.md).
+5. Eseguire `supabase/verifiche_sicurezza.sql`: verificare RLS, assenza di privilegi anonimi e regole di proprietà. Per le due RPC `esegue_come_proprietario` ed `eseguibile_anonimamente` devono essere false.
+6. Provare con un account reale lettura/salvataggio di preventivi, pratiche, spese, impostazioni e scaricamento PDF/backup.
 
 La migrazione aggiunge campi e tabelle, regole di accesso e due funzioni per generare spese senza richieste concorrenti duplicate. Non importa utenti o dati Emergent. Se trova tabelle nuove già esistenti senza `user_id`, si interrompe senza attribuire arbitrariamente i dati; occorre esaminare lo schema reale prima di proseguire. Anche i numeri di preventivo duplicati richiedono revisione. I tipi di incarico Varie sono inizializzati dagli incarichi storici già presenti per ciascun utente; nessun elenco clienti viene importato dallo ZIP.
 

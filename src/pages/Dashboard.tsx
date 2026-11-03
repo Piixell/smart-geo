@@ -18,13 +18,24 @@ const INCASSARE = { comune: 'stato=3&incassare=1', varie: 'stato=3&incassare=1',
 export const Dashboard: React.FC = () => {
   const { user } = useAuthStore();
   const [dati, setDati] = useState<DashboardData | null>(null);
+  const [errore, setErrore] = useState<string | null>(null);
+  const [tentativo, setTentativo] = useState(0);
   const anno = new Date().getFullYear();
 
   useEffect(() => {
+    let attivo = true;
+    setDati(null);
+    setErrore(null);
     if (user?.id) {
-      caricaDashboard(user.id).then(setDati).catch((e) => console.error('Errore dashboard:', e));
+      caricaDashboard(user.id).then((nuoviDati) => {
+        if (attivo) setDati(nuoviDati);
+      }).catch((e) => {
+        console.error('Errore dashboard:', e);
+        if (attivo) setErrore('Impossibile caricare tutti i dati della dashboard. Riprova.');
+      });
     }
-  }, [user?.id]);
+    return () => { attivo = false; };
+  }, [user?.id, tentativo]);
 
   return (
     <div className="space-y-6" data-testid="dashboard">
@@ -37,7 +48,12 @@ export const Dashboard: React.FC = () => {
 
       <AvvisoScadenzeSpese userId={user?.id} />
 
-      {!dati ? (
+      {errore ? (
+        <div className="card p-6 text-ink-800" role="alert">
+          <p>{errore}</p>
+          <button type="button" className="btn btn-secondary mt-3" onClick={() => setTentativo((n) => n + 1)}>Riprova</button>
+        </div>
+      ) : !dati ? (
         <div className="flex items-center gap-2 py-12 text-sm text-ink-500" data-testid="dashboard-caricamento">
           <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-signal-600" /> Caricamento dati...
         </div>
