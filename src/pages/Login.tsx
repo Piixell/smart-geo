@@ -170,13 +170,7 @@ export const Login: React.FC = () => {
           </div>
 
           {/* Links */}
-          <div className="flex items-center justify-between text-sm">
-            <Link
-              to="/register"
-              className="text-signal-600 hover:text-signal-500 hover:underline  "
-            >
-              Non hai un account? Registrati
-            </Link>
+          <div className="flex items-center justify-end text-sm">
             <Link
               to="/reset-password"
               className="text-signal-600 hover:text-signal-500 hover:underline  "
