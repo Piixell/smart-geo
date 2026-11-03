@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, User, LogOut, Settings, Moon, Sun, Search, ChevronRight, Building2, FileCheck, Users, Loader2 } from 'lucide-react';
+import { Menu, LogOut, Settings, Moon, Sun, Search, ChevronRight, Building2, FileCheck, Users, Loader2, FileText, CreditCard, FolderOpen } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { searchAll, type SearchResult, type SearchTable } from '../../services/search';
+import { useImpostazioni } from '../../services/impostazioni';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -11,32 +12,38 @@ interface HeaderProps {
 
 const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
-  '/planner': 'Planner',
-  '/comune-catasto': 'Comune e Catasto',
-  '/ape': 'APE',
-  '/varie': 'Varie',
+  '/planner': 'Agenda settimanale',
+  '/comune-catasto': 'Pratiche comunali e catastali',
+  '/ape': 'Attestati di Prestazione Energetica',
+  '/varie': 'Pratiche varie',
   '/contabilita': 'Contabilità',
   '/spese': 'Spese',
   '/rubrica': 'Rubrica',
-  '/parametri': 'Parametri',
+  '/preventivi': 'Preventivi',
+  '/parametri': 'Parametri di sistema',
   '/user-settings': 'Impostazioni',
 };
 
 const tableLabels: Record<SearchTable, string> = {
-  comune_catasto: 'Comune e Catasto',
-  ape: 'APE',
-  varie: 'Varie',
+  comune_catasto: 'Pratiche comunali e catastali',
+  ape: 'Attestati di Prestazione Energetica',
+  varie: 'Pratiche varie',
   rubrica: 'Rubrica',
+  preventivi: 'Preventivi',
+  scadenze: 'Spese',
 };
 
 const tableIcons: Record<SearchTable, React.ComponentType<{ className?: string }>> = {
   comune_catasto: Building2,
   ape: FileCheck,
-  varie: Building2,
+  varie: FolderOpen,
   rubrica: Users,
+  preventivi: FileText,
+  scadenze: CreditCard,
 };
 
 export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
+  const nomeStudio = useImpostazioni().aspetto.nomeCompleto;
   const navigate = useNavigate();
   const location = useLocation();
   const currentPage = pageTitles[location.pathname] || 'Dashboard';
@@ -47,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
 
   // Inline search state
   const [searchQuery, setSearchQuery] = useState('');
+  const [ricercaMobile, setRicercaMobile] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -149,6 +157,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
     // Delay to allow click on dropdown items
     blurTimeoutRef.current = setTimeout(() => {
       setIsDropdownOpen(false);
+      setRicercaMobile(false);
     }, 150);
   };
 
@@ -192,12 +201,14 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
 
   // Group results by table (preserving table order)
   const groupedResults = (() => {
-    const order: SearchTable[] = ['comune_catasto', 'ape', 'varie', 'rubrica'];
+    const order: SearchTable[] = ['comune_catasto', 'ape', 'varie', 'rubrica', 'preventivi', 'scadenze'];
     const groups: Record<SearchTable, SearchResult[]> = {
       comune_catasto: [],
       ape: [],
       varie: [],
       rubrica: [],
+      preventivi: [],
+      scadenze: [],
     };
     for (const result of searchResults) {
       groups[result.table].push(result);
@@ -235,7 +246,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
   }, [isAnimatingOut]);
 
   return (
-    <header className="h-topbar bg-white border-b border-ink-200 px-4 flex items-center justify-between flex-shrink-0">
+    <header className="relative h-16 bg-white border-b border-ink-200 px-6 flex items-center justify-between flex-shrink-0">
       {/* Left Side */}
       <div className="flex items-center gap-3">
         {/* Mobile Menu Button */}
@@ -248,14 +259,14 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
         
         {/* Breadcrumb */}
         <div className="hidden sm:flex items-center gap-2 text-sm text-ink-500">
-          <span className="text-ink-400">Home</span>
+          <span className="text-ink-400">{nomeStudio}</span>
           <ChevronRight className="w-4 h-4 text-ink-300" />
           <span className="text-ink-700 font-medium">{currentPage}</span>
         </div>
       </div>
 
       {/* Center - Inline Search */}
-      <div ref={searchWrapperRef} className="hidden md:block relative flex-1 max-w-xl mx-auto">
+      <div ref={searchWrapperRef} className={`${ricercaMobile ? 'absolute inset-x-2 top-1/2 -translate-y-1/2 z-50 block' : 'hidden'} md:relative md:inset-auto md:top-auto md:translate-y-0 md:block flex-1 max-w-xl mx-auto`}>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400 pointer-events-none" />
           <input
@@ -266,7 +277,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
             onFocus={handleSearchFocus}
             onBlur={handleSearchBlur}
             onKeyDown={handleSearchKeyDown}
-            placeholder="Cerca committente, indirizzo, proprietà, numero APE..."
+            placeholder="Ricerca generale"
+            data-testid="ricerca-generale-input"
             className="w-full pl-10 pr-12 py-2 bg-ink-50 border border-ink-200 rounded-lg text-sm text-ink-700 placeholder:text-ink-400 focus:bg-white focus:border-signal-500 focus:outline-none focus:ring-1 focus:ring-signal-500 transition-all"
           />
           <kbd className="hidden lg:inline-flex absolute right-3 top-1/2 -translate-y-1/2 items-center gap-1 px-2 py-0.5 bg-white border border-ink-200 rounded text-xs font-mono text-ink-500 pointer-events-none">
@@ -301,6 +313,7 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
                         <button
                           key={item.id}
                           type="button"
+                          data-testid={`ricerca-risultato-${item.id}`}
                           onMouseDown={(e) => {
                             e.preventDefault();
                             handleResultSelect(item);
@@ -337,12 +350,10 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
         {/* Mobile Search Button - toggles inline search by focusing it (visible only on mobile where center input is hidden) */}
         <button
           onClick={() => {
-            const input = searchInputRef.current;
-            if (input) {
-              input.focus();
-              input.scrollIntoView({ block: 'nearest' });
-            }
+            setRicercaMobile(true);
+            setTimeout(() => searchInputRef.current?.focus(), 0);
           }}
+          data-testid="ricerca-mobile-btn"
           className="md:hidden p-2 rounded-md text-ink-500 hover:text-ink-700 hover:bg-ink-100 transition-colors"
         >
           <Search className="w-5 h-5" />
@@ -362,8 +373,8 @@ export const Header: React.FC<HeaderProps> = ({ onMenuClick }: HeaderProps) => {
             onClick={handleUserMenuToggle}
             className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-ink-100 transition-colors"
           >
-            <div className="w-8 h-8 bg-signal-500 rounded-full flex items-center justify-center">
-              <User className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 bg-ink-800 rounded-full flex items-center justify-center text-xs font-semibold text-white" data-testid="header-user-avatar">
+              {(user?.name || user?.username || user?.email || 'U').charAt(0).toUpperCase()}
             </div>
             <div className="hidden lg:block text-left">
               <div className="text-sm font-medium text-ink-700">

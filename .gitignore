@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Configurazione locale e credenziali
+.env
+.env.*
+!.env.example
+
+.npm-cache/
+
+.verifica-sql/

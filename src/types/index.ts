@@ -75,6 +75,7 @@ export interface TipoPratica {
 }
 
 export interface ComuneCatasto {
+  stato_modificato_at?: string;
   id: number;
   committente: string;
   indirizzo?: string;
@@ -82,6 +83,7 @@ export interface ComuneCatasto {
   proprieta?: string;
   proprieta2?: string;
   mail?: string;
+  mail2?: string;
   telefono?: string;
   telefono2?: string;
   note?: string;
@@ -111,6 +113,7 @@ export interface Ape {
   indirizzo?: string;
   citta?: string;
   mail?: string;
+  mail2?: string;
   telefono?: string;
   telefono2?: string;
   note?: string;
@@ -125,6 +128,7 @@ export interface Ape {
 }
 
 export interface Varie {
+  stato_modificato_at?: string;
   id: number;
   committente: string;
   proprieta?: string;
@@ -132,6 +136,7 @@ export interface Varie {
   indirizzo?: string;
   citta?: string;
   mail?: string;
+  mail2?: string;
   telefono?: string;
   telefono2?: string;
   note?: string;
@@ -166,6 +171,8 @@ export interface Scadenza {
   data_pagamento?: string;
   pagamento_pronto: boolean;
   stato_id?: number;
+  categoria?: 'fissi' | 'variabili' | null;
+  maternita?: number | null;
   created_at: string;
   updated_at: string;
   // Joined fields

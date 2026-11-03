@@ -1,53 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, ChevronDown, Edit, Trash2, Check, X, Save, Copy, ArrowRightCircle, User, Search } from 'lucide-react';
+import { Plus, ChevronDown, Trash2, Check, X, Save, Copy, User, Search } from 'lucide-react';
+import { CommittenteSelect } from '../components/CommittenteSelect';
+import { FiltroSelect } from '../components/FiltroSelect';
 import { supabase } from '../services/supabase';
+import { cfg } from '../services/impostazioni';
+import { useApriDaRicerca } from '../hooks/useApriDaRicerca';
+import { useFiltroDashboard, filtroDashboardInUrl } from '../hooks/useFiltroDashboard';
 import { useAuthStore } from '../store/authStore';
-import { RubricaAutocomplete } from '../components/RubricaAutocomplete';
 import { syncRubricaFromPratica } from '../utils/rubricaSync';
+import { conMail2 } from '../utils/mail2';
+import { ContattiPratica, RUBRICA_DEFAULT, type RubricaFlags } from '../components/ContattiPratica';
+import { useConfermaRubrica } from '../components/ConfermaRubrica';
 import { ContextMenu } from '../components/ContextMenu';
-import type { Ape, StatoApe, Rubrica } from '../types';
+import type { Ape, StatoApe } from '../types';
 import toast from 'react-hot-toast';
+import { ContattiPraticaModal } from '../components/ContattiPraticaModal';
 
-const TriStateFilter = ({ value, onChange }: {
-  value: 'all' | 'yes' | 'no';
-  onChange: (v: 'all' | 'yes' | 'no') => void;
-}) => (
-  <div className="flex items-center justify-center gap-0.5">
-    <button
-      onClick={() => onChange('all')}
-      title="Tutti"
-      className={`p-1 rounded-md transition-all duration-150 ${
-        value === 'all'
-          ? 'bg-ink-200 shadow-sm'
-          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
-      }`}
-    >
-      <div className="w-2.5 h-0.5 bg-ink-400 rounded" />
-    </button>
-    <button
-      onClick={() => onChange('yes')}
-      title="Si"
-      className={`p-1 rounded-md transition-all duration-150 ${
-        value === 'yes'
-          ? 'bg-ink-200 shadow-sm'
-          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
-      }`}
-    >
-      <Check className="w-3 h-3 text-topo-500" />
-    </button>
-    <button
-      onClick={() => onChange('no')}
-      title="No"
-      className={`p-1 rounded-md transition-all duration-150 ${
-        value === 'no'
-          ? 'bg-ink-200 shadow-sm'
-          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
-      }`}
-    >
-      <X className="w-3 h-3 text-error-500" />
-    </button>
-  </div>
-);
 
 interface ApeFormData {
   committente: string;
@@ -56,6 +24,7 @@ interface ApeFormData {
   indirizzo: string;
   citta: string;
   mail: string;
+  mail2: string;
   telefono: string;
   telefono2: string;
   note: string;
@@ -101,14 +70,14 @@ export const ApePage: React.FC = () => {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(() => {
-    const saved = localStorage.getItem('ape-records-per-page');
+    const saved = localStorage.getItem('ape-records-per-page-v2');
     if (saved) {
       const parsed = parseInt(saved);
-      if ([25, 50, 100, 200].includes(parsed)) {
+      if ([25, 50, 100, 200, 500, 1000].includes(parsed)) {
         return parsed;
       }
     }
-    return 25;
+    return cfg().pagine.righePratiche;
   });
   const [totalRecords, setTotalRecords] = useState(0);
   const [showModal, setShowModal] = useState(false);
@@ -124,6 +93,7 @@ export const ApePage: React.FC = () => {
     indirizzo: '',
     citta: '',
     mail: '',
+    mail2: '',
     telefono: '',
     telefono2: '',
     note: '',
@@ -139,7 +109,7 @@ export const ApePage: React.FC = () => {
   const activeFilterCount = Object.entries(columnFilters).filter(([key, val]) => {
     if (key === 'pagamento') return val !== 'all';
     return val !== '';
-  }).length + Object.values(presetFilters).filter(Boolean).length;
+  }).length + Object.values(presetFilters).filter(Boolean).length + Object.values(filtriAttivi).filter(Boolean).length;
 
   // Protezione contro errori delle estensioni del browser
   useEffect(() => {
@@ -202,6 +172,7 @@ export const ApePage: React.FC = () => {
       indirizzo: '',
       citta: '',
       mail: '',
+      mail2: '',
       telefono: '',
       telefono2: '',
       note: '',
@@ -219,6 +190,20 @@ export const ApePage: React.FC = () => {
     setShowModal(true);
   };
 
+  useApriDaRicerca<Ape>('ape', (r) => openEditModal(r));
+  useFiltroDashboard(!!user?.id && !authLoading, ({ stato, incassare, nuovo }) => {
+    if (nuovo) {
+      openCreateModal();
+      return;
+    }
+    const cf = { ...columnFilters, stato };
+    const fa = { ...filtriAttivi, soloNonPagate: incassare };
+    setColumnFilters(cf);
+    setFiltriAttivi(fa);
+    setCurrentPage(1);
+    fetchData({ columnFilters: cf, filtriAttivi: fa, page: 1 });
+  });
+
   const openEditModal = (pratica: Ape) => {
     setFormData({
       committente: pratica.committente || '',
@@ -227,6 +212,7 @@ export const ApePage: React.FC = () => {
       indirizzo: pratica.indirizzo || '',
       citta: pratica.citta || '',
       mail: pratica.mail || '',
+      mail2: pratica.mail2 || '',
       telefono: pratica.telefono || '',
       telefono2: pratica.telefono2 || '',
       note: pratica.note || '',
@@ -263,12 +249,12 @@ export const ApePage: React.FC = () => {
   };
 
   // Funzione per combinare le proprietà
-  const combineProprieta = (proprieta1: string | null | undefined, proprieta2: string | null | undefined): string => {
+  const combineProprieta = (proprieta1: string | null | undefined, proprieta2: string | null | undefined): React.ReactNode => {
     if (!proprieta1 && !proprieta2) return '-';
     if (!proprieta2) return proprieta1 || '-';
     if (!proprieta1) return proprieta2 || '-';
     
-    return `${proprieta1} / ${proprieta2}`;
+    return <><span className="block">{proprieta1}</span><span className="block">{proprieta2}</span></>;
   };
 
   const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -386,6 +372,9 @@ export const ApePage: React.FC = () => {
     }
   };
 
+  const [rubricaFlags, setRubricaFlags] = useState<RubricaFlags>(RUBRICA_DEFAULT);
+  const { chiedi: chiediConfermaRubrica, dialog: dialogRubrica } = useConfermaRubrica();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -393,6 +382,21 @@ export const ApePage: React.FC = () => {
       toast.error('Il committente è obbligatorio');
       return;
     }
+
+    const campiMancanti = [
+      !formData.proprieta?.trim() && 'Proprietario 1',
+      !formData.indirizzo?.trim() && 'Indirizzo',
+      !formData.citta?.trim() && 'Città',
+      !formData.registrazione && 'Stato Registrazione',
+    ].filter(Boolean);
+    if (campiMancanti.length > 0) {
+      toast.error(`Campi obbligatori mancanti: ${campiMancanti.join(', ')}`);
+      return;
+    }
+
+    const flagsRubrica = await chiediConfermaRubrica(formData, rubricaFlags);
+    if (!flagsRubrica) return;
+    setRubricaFlags(flagsRubrica);
 
     setSubmitting(true);
 
@@ -407,7 +411,8 @@ export const ApePage: React.FC = () => {
         progressivoFinale = await generaProgressivoAutomatico(formData.registrazione);
       }
 
-      const dataToSubmit = {
+      const dataToSubmit = conMail2({
+        mail2: formData.mail2,
         committente: formData.committente.trim(),
         proprieta: formData.proprieta.trim() || null,
         proprieta2: formData.proprieta2.trim() || null,
@@ -423,7 +428,7 @@ export const ApePage: React.FC = () => {
         omaggio: formData.omaggio,
         created_at: formData.created_at,
         user_id: user?.id
-      };
+      }, editingPratica?.mail2);
 
       console.log('Data to submit:', dataToSubmit);
 
@@ -485,10 +490,13 @@ export const ApePage: React.FC = () => {
 
       // Sync contatto con rubrica
       await syncRubricaFromPratica(
-        formData.proprieta,
+        flagsRubrica.p1 ? formData.proprieta : null,
         formData.telefono,
         formData.mail,
-        formData.committente
+        formData.committente,
+        flagsRubrica.p2 ? formData.proprieta2 : null,
+        formData.telefono2,
+        formData.mail2
       );
 
       closeModal();
@@ -500,6 +508,7 @@ export const ApePage: React.FC = () => {
     }
   };
 
+  const ultimaRichiesta = React.useRef(0);
   const fetchData = async (customFilters?: {
     columnFilters?: typeof columnFilters;
     filtriAttivi?: typeof filtriAttivi;
@@ -507,6 +516,7 @@ export const ApePage: React.FC = () => {
     page?: number;
     perPage?: number;
   }) => {
+    const mia = ++ultimaRichiesta.current;
     try {
       setLoading(true);
       
@@ -556,7 +566,7 @@ export const ApePage: React.FC = () => {
       }
 
       if (currentFilters.pagamento === 'yes') {
-        countQuery = countQuery.eq('pagamento', true);
+        countQuery = countQuery.eq('pagamento', true).not('omaggio', 'is', true);
       } else if (currentFilters.pagamento === 'no') {
         countQuery = countQuery.eq('pagamento', false);
       }
@@ -580,6 +590,7 @@ export const ApePage: React.FC = () => {
         } else {
           countQuery = countQuery.eq('pagamento', false);
         }
+        countQuery = countQuery.not('omaggio', 'is', true).neq('registrazione', 4);
       }
 
       const { count, error: countError } = await countQuery;
@@ -590,7 +601,7 @@ export const ApePage: React.FC = () => {
           toast.error('Sessione scaduta. Effettua nuovamente il login.');
         }
       } else {
-        setTotalRecords(count || 0);
+        if (mia === ultimaRichiesta.current) setTotalRecords(count || 0);
       }
       
       let query = supabase
@@ -613,7 +624,7 @@ export const ApePage: React.FC = () => {
       }
 
       if (currentFilters.pagamento === 'yes') {
-        query = query.eq('pagamento', true);
+        query = query.eq('pagamento', true).not('omaggio', 'is', true);
       } else if (currentFilters.pagamento === 'no') {
         query = query.eq('pagamento', false);
       }
@@ -628,6 +639,7 @@ export const ApePage: React.FC = () => {
         } else {
           query = query.eq('pagamento', false);
         }
+        query = query.not('omaggio', 'is', true).neq('registrazione', 4);
       }
 
       const from = (currentPageParam - 1) * currentPerPage;
@@ -670,6 +682,8 @@ export const ApePage: React.FC = () => {
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
 
+      // una risposta più vecchia non deve sovrascrivere quella dell'ultimo filtro scelto
+      if (mia !== ultimaRichiesta.current) return;
       setPratiche(sortedData);
     } catch (error) {
       console.error('Errore:', error);
@@ -679,6 +693,7 @@ export const ApePage: React.FC = () => {
     }
   };
 
+  const daDashboard = React.useRef(filtroDashboardInUrl());
   useEffect(() => {
     const initializeData = async () => {
       if (authLoading) {
@@ -688,7 +703,7 @@ export const ApePage: React.FC = () => {
 
       if (user?.id) {
         console.log('User autenticato, caricamento dati...');
-        await fetchData();
+        if (!daDashboard.current) await fetchData();
       }
       else if (user === null) {
         console.warn('User non autenticato');
@@ -733,7 +748,7 @@ export const ApePage: React.FC = () => {
               .select(`
                 *,
                 registrazione_info:stati_ape(id, descrizione, colore, ordinamento)
-              `)
+              `).eq('user_id', user?.id)
               .eq('id', payload.new.id)
               .single();
 
@@ -756,7 +771,7 @@ export const ApePage: React.FC = () => {
               .select(`
                 *,
                 registrazione_info:stati_ape(id, descrizione, colore, ordinamento)
-              `)
+              `).eq('user_id', user?.id)
               .eq('id', payload.new.id)
               .single();
 
@@ -831,10 +846,12 @@ export const ApePage: React.FC = () => {
       stato: '', committente: '', proprieta: '', indirizzo: '', citta: '', note: '', progressivo: '', pagamento: 'all'
     };
     const defaultPresetFilters = { omaggio: false };
+    const defaultFiltriAttivi = { soloNonPagate: false };
     setColumnFilters(defaultFilters);
     setPresetFilters(defaultPresetFilters);
+    setFiltriAttivi(defaultFiltriAttivi);
     setCurrentPage(1);
-    fetchData({ columnFilters: defaultFilters, presetFilters: defaultPresetFilters, page: 1 });
+    fetchData({ columnFilters: defaultFilters, presetFilters: defaultPresetFilters, filtriAttivi: defaultFiltriAttivi, page: 1 });
   };
 
   const handleFilterToggle = (filterName: keyof typeof filtriAttivi) => {
@@ -859,7 +876,7 @@ export const ApePage: React.FC = () => {
 
   const handleRecordsPerPageChange = (newRecordsPerPage: number) => {
     setRecordsPerPage(newRecordsPerPage);
-    localStorage.setItem('ape-records-per-page', newRecordsPerPage.toString());
+    localStorage.setItem('ape-records-per-page-v2', newRecordsPerPage.toString());
     setCurrentPage(1);
     fetchData({
       perPage: newRecordsPerPage,
@@ -950,6 +967,10 @@ export const ApePage: React.FC = () => {
   };
 
   const handleTogglePagamento = async (pratica: Ape) => {
+    if (pratica.omaggio) {
+      toast.error('Pagamento non selezionabile: pratica in omaggio');
+      return;
+    }
     try {
       const nuovoPagamento = !pratica.pagamento;
       console.log('Toggling pagamento for pratica', pratica.id, 'from', pratica.pagamento, 'to', nuovoPagamento);
@@ -1032,19 +1053,19 @@ export const ApePage: React.FC = () => {
     return stato.colore;
   };
 
-  const renderToggleButton = (value: boolean) => {
+  const renderToggleButton = (value: boolean, enabled: boolean = true) => {
     return (
       <div
-        className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-150 hover:scale-105 ${
+        className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-150 hover:scale-105 ${enabled ? '' : 'opacity-40'} border-[1.5px] ${
           value
-            ? 'bg-topo-100 hover:bg-topo-200'
-            : 'bg-ink-100 hover:bg-ink-200'
+            ? 'bg-topo-100 hover:bg-topo-200 border-topo-500'
+            : 'bg-ink-100 hover:bg-ink-200 border-ink-400'
         }`}
       >
         {value ? (
-          <Check className="w-4 h-4 text-topo-600" />
+          <Check className="w-4 h-4 text-topo-600" strokeWidth={2.5} />
         ) : (
-          <X className="w-4 h-4 text-ink-400" />
+          <X className="w-4 h-4 text-ink-500" strokeWidth={2} />
         )}
       </div>
     );
@@ -1158,7 +1179,7 @@ export const ApePage: React.FC = () => {
         /* Tabella */
         <div className="card card-flush p-0 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
           <div className="overflow-x-auto h-full overflow-y-auto">
-            <table className="w-full" style={{ minHeight: '400px' }}>
+            <table className="w-full tabella-distesa" style={{ minHeight: '400px' }}>
               <thead className="table-header">
                 <tr>
                   <th className="table-cell text-left">
@@ -1350,9 +1371,15 @@ export const ApePage: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <TriStateFilter
+                    <FiltroSelect
                       value={columnFilters.pagamento}
-                      onChange={(v) => handleApplyFilter({ pagamento: v })}
+                      onChange={(v) => handleApplyFilter({ pagamento: v as 'all' | 'yes' | 'no' })}
+                      options={[
+                        { value: 'all', label: 'Tutti' },
+                        { value: 'yes', label: 'Pagato' },
+                        { value: 'no', label: 'Da pagare' },
+                      ]}
+                      testId="ape-filtro-pagamento-select"
                     />
                   </td>
                 </tr>
@@ -1378,7 +1405,7 @@ export const ApePage: React.FC = () => {
                       currentYear = year;
                       const count = yearCounts[year];
                       rows.push(
-                        <tr key={`year-${year}`} className="bg-ink-100">
+                        <tr key={`year-${year}-${pratica.id}`} className="bg-ink-100">
                           <td colSpan={9} className="px-4 py-2">
                             <div className="flex items-center gap-3">
                               <span className="text-sm font-bold text-ink-700">{year}</span>
@@ -1390,7 +1417,7 @@ export const ApePage: React.FC = () => {
                       );
                     }
                     rows.push(
-                      <tr key={pratica.id} className="table-row hover:bg-ink-50" onContextMenu={(e) => handleContextMenu(e, pratica)}>
+                      <tr key={pratica.id} className="table-row cursor-pointer hover:bg-ink-50" onContextMenu={(e) => handleContextMenu(e, pratica)} onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest('button, a, input, select, textarea')) openEditModal(pratica); }} title="Doppio clic per modificare" data-testid={`riga-ape-${pratica.id}`}>
                         <td className="table-cell">
                           <span
                             className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(pratica.registrazione_info)}`}
@@ -1418,13 +1445,20 @@ export const ApePage: React.FC = () => {
                           {pratica.progressivo || '-'}
                         </td>
                         <td className="table-cell text-center">
-                          <button
-                            onClick={() => handleTogglePagamento(pratica)}
-                            className="transition-colors cursor-pointer"
-                            title="Clicca per cambiare stato"
-                          >
-                            {renderToggleButton(pratica.pagamento)}
-                          </button>
+                          {pratica.omaggio ? (
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-400" title="Pratica in omaggio: nessun pagamento" data-testid={`ape-omaggio-${pratica.id}`}>
+                              Omaggio
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleTogglePagamento(pratica)}
+                              className="transition-colors cursor-pointer"
+                              title="Clicca per cambiare stato"
+                              data-testid={`ape-toggle-pagamento-${pratica.id}`}
+                            >
+                              {renderToggleButton(pratica.pagamento)}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -1458,6 +1492,8 @@ export const ApePage: React.FC = () => {
                       <option value={50}>50</option>
                       <option value={100}>100</option>
                       <option value={200}>200</option>
+                      <option value={500}>500</option>
+                      <option value={1000}>1000</option>
                     </select>
                   </div>
                   
@@ -1546,6 +1582,7 @@ export const ApePage: React.FC = () => {
       </div>
 
       {/* Modal Gestione Pratica APE */}
+      {dialogRubrica}
       {showModal && (
         <div className="modal-overlay">
           <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1564,80 +1601,50 @@ export const ApePage: React.FC = () => {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
+              <ContattiPratica
+                valori={formData}
+                onInputChange={handleInputChange}
+                onPatch={(patch) => setFormData(prev => ({ ...prev, ...patch }))}
+                rubrica={rubricaFlags}
+                onRubricaChange={setRubricaFlags}
+              />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-ink-700 mb-1">
                       Committente *
                     </label>
-                    <input
-                      type="text"
-                      name="committente"
-                      required
+                    <CommittenteSelect
                       value={formData.committente}
-                      onChange={handleInputChange}
-                      className="input w-full"
+                      onChange={(v) => setFormData((prev) => ({ ...prev, committente: v }))}
+                      testId="ape-committente-input"
                       placeholder="Nome del committente"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-ink-700 mb-1">
-                      Proprietà
+                      Indirizzo *
                     </label>
-                    <RubricaAutocomplete
-                      value={formData.proprieta}
-                      onChange={(val) => setFormData(prev => ({ ...prev, proprieta: val }))}
-                      onSelect={(contatto: Rubrica) => {
-                        setFormData(prev => ({
-                          ...prev,
-                          proprieta: contatto.nominativo,
-                          telefono: contatto.telefono || '',
-                          mail: contatto.email || ''
-                        }));
-                      }}
-                      placeholder="Nome del proprietario"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-ink-700 mb-1">
-                      Proprietà 2
-                    </label>
-                    <input
-                      type="text"
-                      name="proprieta2"
-                      value={formData.proprieta2}
-                      onChange={handleInputChange}
-                      className="input w-full"
-                      placeholder="Nome secondo proprietario"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-ink-700 mb-1">
-                      Indirizzo
-                    </label>
-                    <input
-                      type="text"
-                      name="indirizzo"
+                    <CommittenteSelect
+                      campo="indirizzo"
                       value={formData.indirizzo}
-                      onChange={handleInputChange}
-                      className="input w-full"
+                      onChange={(v) => setFormData((prev) => ({ ...prev, indirizzo: v }))}
+                      onCitta={(c) => setFormData((prev) => ({ ...prev, citta: c }))}
+                      testId="ape-indirizzo-input"
                       placeholder="Via, numero civico"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-ink-700 mb-1">
-                      Città
+                      Città *
                     </label>
-                    <input
-                      type="text"
-                      name="citta"
+                    <CommittenteSelect
+                      campo="citta"
                       value={formData.citta}
-                      onChange={handleInputChange}
-                      className="input w-full"
+                      onChange={(v) => setFormData((prev) => ({ ...prev, citta: v }))}
+                      testId="ape-citta-input"
                       placeholder="Città"
                     />
                   </div>
@@ -1646,6 +1653,8 @@ export const ApePage: React.FC = () => {
                     <label className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 border-2 ${
                       formData.pagamento
                         ? 'bg-signal-50 border-signal-500 text-signal-600 cursor-pointer'
+                        : formData.omaggio
+                        ? 'bg-ink-50 border-ink-200 text-ink-400 cursor-not-allowed opacity-50'
                         : 'bg-ink-50 border-ink-200 text-ink-700 hover:bg-ink-100 cursor-pointer'
                     }`}>
                       <input
@@ -1653,6 +1662,7 @@ export const ApePage: React.FC = () => {
                         name="pagamento"
                         checked={formData.pagamento}
                         onChange={handleInputChange}
+                        disabled={formData.omaggio}
                         className="sr-only"
                       />
                       <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
@@ -1677,7 +1687,10 @@ export const ApePage: React.FC = () => {
                         type="checkbox"
                         name="omaggio"
                         checked={formData.omaggio}
-                        onChange={handleInputChange}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormData(prev => ({ ...prev, omaggio: checked, pagamento: checked ? false : prev.pagamento }));
+                        }}
                         className="sr-only"
                       />
                       <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200 ${
@@ -1700,55 +1713,15 @@ export const ApePage: React.FC = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-ink-700 mb-1">
-                      Telefono
-                    </label>
-                    <input
-                      type="tel"
-                      name="telefono"
-                      value={formData.telefono}
-                      onChange={handleInputChange}
-                      className="input w-full"
-                      placeholder="XXX XXX XXXX"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-ink-700 mb-1">
-                      Telefono 2
-                    </label>
-                    <input
-                      type="tel"
-                      name="telefono2"
-                      value={formData.telefono2}
-                      onChange={handleInputChange}
-                      className="input w-full"
-                      placeholder="XXX XXX XXXX"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-ink-700 mb-1">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      name="mail"
-                      value={formData.mail}
-                      onChange={handleInputChange}
-                      className="input w-full"
-                      placeholder="email@esempio.com"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-ink-700 mb-1">
-                      Stato Registrazione
+                      Stato Registrazione *
                     </label>
                     <div className="relative">
                       <select
                         name="registrazione"
                         value={formData.registrazione || ''}
                         onChange={handleInputChange}
+                        required
+                        data-testid="ape-registrazione-select"
                         className="input w-full pr-8 appearance-none"
                       >
                         <option value="">-- Seleziona stato --</option>
@@ -1846,20 +1819,6 @@ export const ApePage: React.FC = () => {
       {contextMenu.pratica && (
         <ContextMenu x={contextMenu.x} y={contextMenu.y}>
           <button
-            onClick={() => handleContextMenuAction('edit', contextMenu.pratica!)}
-            className="context-menu-item"
-          >
-            <Edit className="w-4 h-4 text-signal-500" />
-            Modifica
-          </button>
-          <button
-            onClick={() => handleContextMenuAction('status', contextMenu.pratica!)}
-            className="context-menu-item"
-          >
-            <ArrowRightCircle className="w-4 h-4 text-warning-500" />
-            Cambia stato
-          </button>
-          <button
             onClick={() => handleContextMenuAction('contact', contextMenu.pratica!)}
             className="context-menu-item"
           >
@@ -1928,44 +1887,7 @@ export const ApePage: React.FC = () => {
 
       {/* Modal Contatto da Menu Contestuale */}
       {showContextMenuActionModal === 'contatto' && selectedPraticaForContextMenu && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-lg font-semibold text-ink-900 mb-4">
-              Contatto - {selectedPraticaForContextMenu.committente}
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1">Proprietario</label>
-                <p className="text-ink-900">{selectedPraticaForContextMenu.proprieta || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1">Telefono</label>
-                <p className="text-ink-900">{selectedPraticaForContextMenu.telefono || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1">Email</label>
-                <p className="text-ink-900">{selectedPraticaForContextMenu.mail || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1">Indirizzo</label>
-                <p className="text-ink-900">
-                  {selectedPraticaForContextMenu.indirizzo || '-'}{selectedPraticaForContextMenu.citta ? `, ${selectedPraticaForContextMenu.citta}` : ''}
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 mt-6">
-              <button
-                onClick={() => {
-                  setShowContextMenuActionModal(null);
-                  setSelectedPraticaForContextMenu(null);
-                }}
-                className="px-4 py-2 text-sm font-medium text-ink-700 bg-white border border-ink-300 rounded-md hover:bg-ink-50 transition-colors"
-              >
-                Chiudi
-              </button>
-            </div>
-          </div>
-        </div>
+        <ContattiPraticaModal pratica={selectedPraticaForContextMenu} onClose={() => { setShowContextMenuActionModal(null); setSelectedPraticaForContextMenu(null); }} />
       )}
     </div>
   );

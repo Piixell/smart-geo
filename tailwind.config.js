@@ -1,4 +1,18 @@
 /** @type {import('tailwindcss').Config} */
+// Tema grigio/nero coordinato con la barra laterale
+const grafite = {
+  50: '#F5F5F5',
+  100: '#E5E5E5',
+  200: '#D4D4D4',
+  300: '#A3A3A3',
+  400: '#737373',
+  500: '#262626',
+  600: '#171717',
+  700: '#171717',
+  800: '#0A0A0A',
+  900: '#0A0A0A',
+  950: '#1F1F1F',
+};
 export default {
   content: [
     "./index.html",
@@ -10,30 +24,33 @@ export default {
       colors: {
         // Ink Neutrals (Datum v2)
         ink: {
-          50: '#FAFAF9',
-          100: '#F5F5F4',
-          200: '#E7E5E4',
-          300: '#D6D3D1',
-          400: '#A8A29E',
-          500: '#78716C',
-          600: '#57534E',
-          700: '#44403C',
-          800: '#292524',
-          900: '#1C1917',
+          50: '#FAFAFA',
+          100: '#F5F5F5',
+          200: '#E5E5E5',
+          300: '#D4D4D4',
+          400: '#A3A3A3',
+          500: '#737373',
+          600: '#525252',
+          700: '#404040',
+          800: '#262626',
+          900: '#171717',
         },
-        // Signal Orange (Primary Action)
-        signal: {
-          50: '#FFF7ED',
-          100: '#FFEDD5',
-          200: '#FED7AA',
-          300: '#FDBA74',
-          400: '#FB923C',
-          500: '#EA580C',
-          600: '#C2410C',
-          700: '#9A3412',
-          800: '#7C2D12',
-          900: '#431407',
+        signal: grafite,
+        gray: {
+          50: '#FAFAFA',
+          100: '#F5F5F5',
+          200: '#E5E5E5',
+          300: '#D4D4D4',
+          400: '#A3A3A3',
+          500: '#737373',
+          600: '#525252',
+          700: '#3A3A3A',
+          800: '#262626',
+          900: '#1A1A1A',
         },
+        blue: grafite,
+        sky: grafite,
+        indigo: grafite,
         // Topographic Teal (Secondary/Success)
         topo: {
           50: '#F0FDFA',
@@ -64,21 +81,21 @@ export default {
           600: '#B45309',
         },
         info: {
-          50: '#EFF6FF',
-          500: '#2563EB',
-          600: '#1D4ED8',
+          50: '#F5F5F5',
+          500: '#262626',
+          600: '#171717',
         },
         // Legacy sidebar colors (maintain compatibility)
         sidebar: {
-          background: '#292524',
-          border: '#44403C',
-          text: '#D6D3D1',
-          textActive: '#FAFAF9',
-          hover: '#44403C',
+          background: '#171717',
+          border: '#262626',
+          text: '#D4D4D4',
+          textActive: '#FAFAFA',
+          hover: '#262626',
         },
       },
       fontFamily: {
-        display: ['Space Grotesk', 'sans-serif'],
+        display: ['Manrope', 'sans-serif'],
         body: ['IBM Plex Sans', 'sans-serif'],
         mono: ['IBM Plex Mono', 'monospace'],
       },

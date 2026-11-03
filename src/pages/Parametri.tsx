@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Check, X, Building, Calculator, Briefcase, Calendar, FileCheck, Settings, CreditCard, Tag } from 'lucide-react';
 import { supabase } from '../services/supabase';
+import { TipiIncaricoVarieSection } from '../components/TipiIncaricoVarieSection';
+import { CommittentiSection } from '../components/CommittentiSection';
+import { PrestazioniSection } from '../components/PrestazioniSection';
+import { ImpostazioniSection } from '../components/ImpostazioniSection';
+import { BackupSection } from '../components/BackupSection';
 import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
 import type { StatoVarie } from '../types';
@@ -301,7 +306,7 @@ export const Parametri: React.FC = () => {
       if (editingParametro) {
         const { error } = await supabase
           .from('parametri_fatturazione')
-          .update(formParametri)
+          .update(formParametri).eq('user_id', user?.id)
           .eq('id', editingParametro.id);
 
         if (error) throw error;
@@ -331,7 +336,7 @@ export const Parametri: React.FC = () => {
     try {
       const { error } = await supabase
         .from('parametri_fatturazione')
-        .delete()
+        .delete().eq('user_id', user?.id)
         .eq('id', id);
 
       if (error) throw error;
@@ -487,7 +492,7 @@ export const Parametri: React.FC = () => {
       if (editingCategoria) {
         const { error } = await supabase
           .from('planner_categories')
-          .update(categoryData)
+          .update(categoryData).eq('user_id', user?.id)
           .eq('id', editingCategoria.id);
 
         if (error) throw error;
@@ -517,7 +522,7 @@ export const Parametri: React.FC = () => {
     try {
       const { error } = await supabase
         .from('planner_categories')
-        .delete()
+        .delete().eq('user_id', user?.id)
         .eq('id', id);
 
       if (error) throw error;
@@ -932,6 +937,12 @@ export const Parametri: React.FC = () => {
         <p className="text-gray-600 dark:text-gray-300">Gestione configurazioni e impostazioni</p>
       </div>
 
+      <BackupSection />
+
+      <ImpostazioniSection />
+
+      <PrestazioniSection />
+
       {/* Dati Azienda */}
       <div className="card dark:bg-gray-800 dark:border-gray-700">
         <div className="flex items-center justify-between mb-6">
@@ -1224,6 +1235,10 @@ export const Parametri: React.FC = () => {
           </table>
         </div>
       </div>
+
+      <TipiIncaricoVarieSection />
+
+      <CommittentiSection />
 
       {/* Tipi di Pratica */}
       <div className="card dark:bg-gray-800 dark:border-gray-700">

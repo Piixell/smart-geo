@@ -14,10 +14,11 @@ import { VariePage } from './pages/Varie';
 import { Parametri } from './pages/Parametri';
 import { Planner } from './pages/Planner';
 import { Rubrica } from './pages/Rubrica';
+import { Preventivi } from './pages/Preventivi';
 import { UserSettings } from './pages/UserSettings';
 
 function App() {
-  const { initialize } = useAuthStore();
+  const { initialize, user } = useAuthStore();
 
   useEffect(() => {
     initialize();
@@ -35,7 +36,7 @@ function App() {
             path="/*"
             element={
               <ProtectedRoute>
-                <AppLayout />
+                <AppLayout key={user?.id} />
               </ProtectedRoute>
             }
           >
@@ -50,6 +51,7 @@ function App() {
             <Route path="ape" element={<ApePage />} />
             <Route path="varie" element={<VariePage />} />
             <Route path="rubrica" element={<Rubrica />} />
+            <Route path="preventivi" element={<Preventivi />} />
             <Route path="parametri" element={<Parametri />} />
             <Route path="user-settings" element={<UserSettings />} />
           </Route>
@@ -62,7 +64,7 @@ function App() {
             duration: 3000,
             style: {
               background: '#fff',
-              color: '#44403C',
+              color: '#273449',
               border: '1px solid #E7E5E4',
               borderRadius: '8px',
               padding: '12px 16px',

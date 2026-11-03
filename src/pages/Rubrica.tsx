@@ -1,10 +1,14 @@
+import { useAuthStore } from '../store/authStore';
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, X, Phone, Mail, Edit, Trash2, User } from 'lucide-react';
+import { Plus, Search, X, Phone, Mail, Edit, Trash2, User, RefreshCw } from 'lucide-react';
 import { supabase } from '../services/supabase';
+import { useApriDaRicerca } from '../hooks/useApriDaRicerca';
+import { sincronizzaRubricaDaPratiche, propagaContattoAPratiche } from '../utils/rubricaSync';
 import type { Rubrica as RubricaType } from '../types';
 import toast from 'react-hot-toast';
 
 export const Rubrica: React.FC = () => {
+  const { user } = useAuthStore();
   const [contatti, setContatti] = useState<RubricaType[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -19,13 +23,28 @@ export const Rubrica: React.FC = () => {
     disattivato: false
   });
   const [submitting, setSubmitting] = useState(false);
+  const [sincronizzando, setSincronizzando] = useState(false);
+
+  const handleSincronizza = async () => {
+    setSincronizzando(true);
+    try {
+      const { aggiunti, aggiornati } = await sincronizzaRubricaDaPratiche();
+      toast.success(`Sincronizzazione completata: ${aggiunti} contatti aggiunti, ${aggiornati} aggiornati`);
+      fetchContatti();
+    } catch (error) {
+      console.error('Errore sincronizzazione rubrica:', error);
+      toast.error('Errore durante la sincronizzazione della rubrica');
+    } finally {
+      setSincronizzando(false);
+    }
+  };
 
   const fetchContatti = async () => {
     try {
       setLoading(true);
       let query = supabase
         .from('rubrica')
-        .select('*')
+        .select('*').eq('user_id', user?.id)
         .order('nominativo', { ascending: true });
 
       // Filtro per testo di ricerca
@@ -72,7 +91,7 @@ export const Rubrica: React.FC = () => {
     try {
       const { error } = await supabase
         .from('rubrica')
-        .delete()
+        .delete().eq('user_id', user?.id)
         .eq('id', id);
 
       if (error) {
@@ -98,6 +117,8 @@ export const Rubrica: React.FC = () => {
     }));
   };
 
+  useApriDaRicerca<RubricaType>('rubrica', (r) => handleEditContatto(r));
+
   const handleEditContatto = (contatto: RubricaType) => {
     setEditingContatto(contatto);
     setFormData({
@@ -116,7 +137,7 @@ export const Rubrica: React.FC = () => {
       
       const { error } = await supabase
         .from('rubrica')
-        .update({ disattivato: nuovoStato })
+        .update({ disattivato: nuovoStato }).eq('user_id', user?.id)
         .eq('id', contatto.id);
 
       if (error) {
@@ -165,7 +186,7 @@ export const Rubrica: React.FC = () => {
         // Modifica contatto esistente
         const { error } = await supabase
           .from('rubrica')
-          .update(contattoData)
+          .update(contattoData).eq('user_id', user?.id)
           .eq('id', editingContatto.id);
 
         if (error) {
@@ -174,7 +195,18 @@ export const Rubrica: React.FC = () => {
           return;
         }
 
-        toast.success('Contatto modificato con successo');
+        const cambiato = editingContatto.nominativo !== contattoData.nominativo || (editingContatto.telefono || null) !== contattoData.telefono || (editingContatto.email || null) !== contattoData.email;
+        if (cambiato) {
+          try {
+            const n = await propagaContattoAPratiche(editingContatto.nominativo, contattoData);
+            toast.success(n ? `Contatto modificato e aggiornato in ${n} ${n === 1 ? 'pratica' : 'pratiche'}` : 'Contatto modificato con successo');
+          } catch (err) {
+            console.error('Errore aggiornamento pratiche:', err);
+            toast.error('Contatto modificato, ma non è stato possibile aggiornare le pratiche');
+          }
+        } else {
+          toast.success('Contatto modificato con successo');
+        }
       } else {
         // Crea nuovo contatto
         const { error } = await supabase
@@ -234,18 +266,34 @@ export const Rubrica: React.FC = () => {
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Rubrica</h1>
-          <p className="text-gray-600 dark:text-gray-300">Gestione contatti</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Rubrica contatti</h1>
+          <p className="text-gray-600 dark:text-gray-300">Proprietari, committenti e riferimenti dello studio</p>
+          <span className="mt-2 inline-flex items-baseline gap-1.5 rounded-full border border-ink-200 bg-white px-3 py-1 text-xs text-ink-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300" data-testid="rubrica-contatore">
+            <strong className="text-sm tabular-nums text-ink-900 dark:text-white">{contatti.length}</strong> {contatti.length === 1 ? 'contatto' : 'contatti'}{searchTerm ? ' trovati' : ' in rubrica'}
+          </span>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Nuovo Contatto
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSincronizza}
+            disabled={sincronizzando}
+            className="btn btn-secondary flex items-center gap-2"
+            data-testid="rubrica-sincronizza-btn"
+            title="Aggiunge in rubrica i contatti presenti in Comune/Catasto, APE e Varie"
+          >
+            <RefreshCw className={`w-4 h-4 ${sincronizzando ? 'animate-spin' : ''}`} />
+            {sincronizzando ? 'Sincronizzazione...' : 'Sincronizza dalle pratiche'}
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="btn btn-primary flex items-center gap-2"
+            data-testid="rubrica-nuovo-contatto-btn"
+          >
+            <Plus className="w-4 h-4" />
+            Nuovo Contatto
+          </button>
+        </div>
       </div>
 
       {/* Filtri */}
@@ -316,7 +364,7 @@ export const Rubrica: React.FC = () => {
       {/* Tabella Contatti */}
       <div className="card p-0 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full tabella-mobile">
             <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -357,7 +405,7 @@ export const Rubrica: React.FC = () => {
                 </tr>
               ) : (
                 contatti.map((contatto) => (
-                  <tr key={contatto.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <tr key={contatto.id} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700" onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest('button, a, input, select, textarea')) handleEditContatto(contatto); }} title="Doppio clic per aprire il contatto" data-testid={`riga-contatto-${contatto.id}`}>
                     <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-gray-400" />

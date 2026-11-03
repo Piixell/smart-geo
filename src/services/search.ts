@@ -1,6 +1,7 @@
+import { richiediIdUtente } from './utente';
 import { supabase } from './supabase';
 
-export type SearchTable = 'comune_catasto' | 'ape' | 'varie' | 'rubrica';
+export type SearchTable = 'comune_catasto' | 'ape' | 'varie' | 'rubrica' | 'preventivi' | 'scadenze';
 
 export interface SearchResult {
   id: string;
@@ -10,41 +11,34 @@ export interface SearchResult {
   route: string;
 }
 
-interface RawRow {
-  id: string;
-  committente?: string;
-  nominativo?: string;
-  indirizzo?: string;
-  proprieta?: string;
-  proprieta2?: string;
-  progressivo?: string;
-}
+type Riga = Record<string, string | null | undefined> & { id: string };
 
 const SEARCH_LIMIT = 10;
 
-function buildSublabel(row: RawRow, table: SearchTable): string | undefined {
-  const parts: string[] = [];
+const ROTTE: Record<SearchTable, string> = {
+  comune_catasto: '/comune-catasto',
+  ape: '/ape',
+  varie: '/varie',
+  rubrica: '/rubrica',
+  preventivi: '/preventivi',
+  scadenze: '/spese',
+};
 
-  if (table === 'ape' && row.progressivo) {
-    parts.push(`APE ${row.progressivo}`);
-  }
+const CAMPI_PRATICA = ['committente', 'indirizzo', 'citta', 'proprieta', 'proprieta2', 'telefono', 'telefono2', 'mail', 'mail2', 'note'];
 
-  if (row.indirizzo) {
-    parts.push(row.indirizzo);
-  }
+const CONFIG: { table: SearchTable; campi: string[]; ordine: string; etichetta: (r: Riga) => string; dettaglio: (r: Riga) => (string | null | undefined)[] }[] = [
+  { table: 'comune_catasto', campi: CAMPI_PRATICA, ordine: 'committente', etichetta: (r) => r.committente || 'Senza committente', dettaglio: (r) => [r.indirizzo, r.citta, r.proprieta || r.proprieta2, r.telefono] },
+  { table: 'ape', campi: [...CAMPI_PRATICA, 'progressivo'], ordine: 'committente', etichetta: (r) => r.committente || 'Senza committente', dettaglio: (r) => [r.progressivo && `APE ${r.progressivo}`, r.indirizzo, r.citta, r.proprieta || r.proprieta2, r.telefono] },
+  { table: 'varie', campi: [...CAMPI_PRATICA, 'tipo_incarico'], ordine: 'committente', etichetta: (r) => r.committente || 'Senza committente', dettaglio: (r) => [r.tipo_incarico, r.indirizzo, r.citta, r.proprieta || r.proprieta2, r.telefono] },
+  { table: 'rubrica', campi: ['nominativo', 'telefono', 'email', 'riferimento'], ordine: 'nominativo', etichetta: (r) => r.nominativo || 'Senza nominativo', dettaglio: (r) => [r.telefono, r.email, r.riferimento] },
+  { table: 'preventivi', campi: ['numero', 'cliente', 'indirizzo_cliente', 'indirizzo_immobile', 'citta_immobile', 'codice_fiscale_cliente'], ordine: 'created_at', etichetta: (r) => `N° ${r.numero} - ${(r.cliente || '').split('\n').join(' - ')}`, dettaglio: (r) => [r.indirizzo_immobile, r.citta_immobile] },
+  { table: 'scadenze', campi: ['descrizione'], ordine: 'descrizione', etichetta: (r) => r.descrizione || 'Spesa', dettaglio: (r) => [r.data_scadenza] },
+];
 
-  const prop = row.proprieta || row.proprieta2;
-  if (prop) {
-    parts.push(prop);
-  }
-
-  return parts.length > 0 ? parts.join(' — ') : undefined;
-}
-
-function buildOrFilter(term: string, fields: string[]): string {
-  const escaped = term.replace(/,/g, '\\,');
-  return fields.map((f) => `${f}.ilike.%${escaped}%`).join(',');
-}
+const filtroOr = (term: string, campi: string[]) => {
+  const t = term.replace(/[,()]/g, ' ');
+  return campi.map((c) => `${c}.ilike.%${t}%`).join(',');
+};
 
 export async function searchAll(term: string): Promise<SearchResult[]> {
   const trimmed = term.trim();
@@ -52,102 +46,20 @@ export async function searchAll(term: string): Promise<SearchResult[]> {
     return [];
   }
 
-  const comuneOr = buildOrFilter(trimmed, [
-    'committente',
-    'indirizzo',
-    'proprieta',
-    'proprieta2',
-  ]);
+  const userId = await richiediIdUtente();
+  const risposte = await Promise.all(
+    CONFIG.map(({ table, campi, ordine }) =>
+      supabase.from(table).select('*').eq('user_id', userId).or(filtroOr(trimmed, campi)).order(ordine, { ascending: ordine !== 'created_at' }).limit(SEARCH_LIMIT),
+    ),
+  );
 
-  const apeOr = buildOrFilter(trimmed, [
-    'committente',
-    'indirizzo',
-    'proprieta',
-    'proprieta2',
-    'progressivo',
-  ]);
-
-  const varieOr = comuneOr;
-
-  const rubricaOr = buildOrFilter(trimmed, ['nominativo']);
-
-  const [comune, ape, varie, rubrica] = await Promise.all([
-    supabase
-      .from('comune_catasto')
-      .select('id, committente, indirizzo, proprieta, proprieta2')
-      .or(comuneOr)
-      .order('committente', { ascending: true })
-      .limit(SEARCH_LIMIT),
-    supabase
-      .from('ape')
-      .select('id, committente, indirizzo, proprieta, proprieta2, progressivo')
-      .or(apeOr)
-      .order('committente', { ascending: true })
-      .limit(SEARCH_LIMIT),
-    supabase
-      .from('varie')
-      .select('id, committente, indirizzo, proprieta, proprieta2')
-      .or(varieOr)
-      .order('committente', { ascending: true })
-      .limit(SEARCH_LIMIT),
-    supabase
-      .from('rubrica')
-      .select('id, nominativo')
-      .or(rubricaOr)
-      .eq('disattivato', false)
-      .order('nominativo', { ascending: true })
-      .limit(SEARCH_LIMIT),
-  ]);
-
-  const results: SearchResult[] = [];
-
-  if (comune.data) {
-    for (const row of comune.data as RawRow[]) {
-      results.push({
-        id: `comune_catasto:${row.id}`,
-        table: 'comune_catasto',
-        label: row.committente || 'Senza committente',
-        sublabel: buildSublabel(row, 'comune_catasto'),
-        route: '/comune-catasto',
-      });
-    }
-  }
-
-  if (ape.data) {
-    for (const row of ape.data as RawRow[]) {
-      results.push({
-        id: `ape:${row.id}`,
-        table: 'ape',
-        label: row.committente || 'Senza committente',
-        sublabel: buildSublabel(row, 'ape'),
-        route: '/ape',
-      });
-    }
-  }
-
-  if (varie.data) {
-    for (const row of varie.data as RawRow[]) {
-      results.push({
-        id: `varie:${row.id}`,
-        table: 'varie',
-        label: row.committente || 'Senza committente',
-        sublabel: buildSublabel(row, 'varie'),
-        route: '/varie',
-      });
-    }
-  }
-
-  if (rubrica.data) {
-    for (const row of rubrica.data as RawRow[]) {
-      results.push({
-        id: `rubrica:${row.id}`,
-        table: 'rubrica',
-        label: row.nominativo || 'Senza nominativo',
-        sublabel: undefined,
-        route: '/rubrica',
-      });
-    }
-  }
-
-  return results;
+  return CONFIG.flatMap(({ table, etichetta, dettaglio }, i) =>
+    ((risposte[i].data || []) as Riga[]).map((r) => ({
+      id: `${table}:${r.id}`,
+      table,
+      label: etichetta(r),
+      sublabel: dettaglio(r).filter(Boolean).join(' — ') || undefined,
+      route: `${ROTTE[table]}?apri=${r.id}`,
+    })),
+  );
 }

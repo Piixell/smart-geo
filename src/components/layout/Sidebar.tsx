@@ -10,9 +10,11 @@ import {
   FolderOpen,
   Users,
   Settings,
+  FileText,
   X
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { useImpostazioni } from '../../services/impostazioni';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -23,7 +25,7 @@ interface MenuItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   path: string;
-  category: 'navigazione' | 'strumenti' | 'impostazioni';
+  category: 'pratiche' | 'amministrazione' | 'configurazione';
 }
 
 const menuItems: MenuItem[] = [
@@ -32,66 +34,73 @@ const menuItems: MenuItem[] = [
     label: 'Dashboard',
     icon: Home,
     path: '/',
-    category: 'navigazione'
+    category: 'pratiche'
   },
   {
-    label: 'Planner',
+    label: 'Agenda settimanale',
     icon: Calendar,
     path: '/planner',
-    category: 'navigazione'
+    category: 'pratiche'
   },
   {
-    label: 'Comune e Catasto',
+    label: 'Pratiche comunali e catastali',
     icon: Building2,
     path: '/comune-catasto',
-    category: 'navigazione'
+    category: 'pratiche'
   },
   {
-    label: 'APE',
+    label: 'Attestati di Prestazione Energetica',
     icon: FileCheck,
     path: '/ape',
-    category: 'navigazione'
+    category: 'pratiche'
   },
   {
-    label: 'Varie',
+    label: 'Pratiche varie',
     icon: FolderOpen,
     path: '/varie',
-    category: 'navigazione'
+    category: 'pratiche'
   },
   // Strumenti
+  {
+    label: 'Preventivi',
+    icon: FileText,
+    path: '/preventivi',
+    category: 'amministrazione'
+  },
   {
     label: 'Contabilità',
     icon: Calculator,
     path: '/contabilita',
-    category: 'strumenti'
+    category: 'amministrazione'
   },
   {
     label: 'Spese',
     icon: CreditCard,
     path: '/spese',
-    category: 'strumenti'
+    category: 'amministrazione'
   },
   {
     label: 'Rubrica',
     icon: Users,
     path: '/rubrica',
-    category: 'strumenti'
+    category: 'amministrazione'
   },
   // Impostazioni
   {
-    label: 'Parametri',
+    label: 'Parametri di sistema',
     icon: Settings,
     path: '/parametri',
-    category: 'impostazioni'
+    category: 'configurazione'
   }
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }: SidebarProps) => {
   const location = useLocation();
+  const { aspetto, menu } = useImpostazioni();
 
-  const navigazioneItems = menuItems.filter(item => item.category === 'navigazione');
-  const strumentiItems = menuItems.filter(item => item.category === 'strumenti');
-  const impostazioniItems = menuItems.filter(item => item.category === 'impostazioni');
+  const navigazioneItems = menuItems.filter(item => item.category === 'pratiche');
+  const strumentiItems = menuItems.filter(item => item.category === 'amministrazione');
+  const impostazioniItems = menuItems.filter(item => item.category === 'configurazione');
 
   const isActive = (path: string) => {
     if (path === '/') {
@@ -110,13 +119,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }: SidebarProp
       )}
     >
       {isActive(item.path) && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-signal-500 rounded-r" />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r" />
       )}
       <item.icon className={clsx(
         'w-5 h-5 flex-shrink-0',
-        isActive(item.path) ? 'text-signal-500' : 'text-ink-400 group-hover:text-white'
+        isActive(item.path) ? 'text-white' : 'text-neutral-400 group-hover:text-white'
       )} />
-      <span className="sidebar-label truncate">{item.label}</span>
+      <span className="sidebar-label leading-tight">{menu[item.path] || item.label}</span>
     </NavLink>
   );
 
@@ -132,26 +141,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }: SidebarProp
 
       {/* Sidebar */}
       <aside className={clsx(
-        'fixed inset-y-0 left-0 z-40 flex flex-col bg-ink-800 transition-all duration-200',
+        'fixed inset-y-0 left-0 z-40 flex flex-col bg-neutral-900 transition-all duration-200',
         'w-sidebar lg:relative',
         isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-      )}>
+      )} style={{ backgroundColor: aspetto.coloreBarra }}>
         {/* Logo */}
-        <div className="flex items-center justify-between h-topbar px-4 border-b border-ink-700">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bg-signal-500 flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2L2 22h20L12 2zm0 4l7 14H5l7-14z"/>
-                <circle cx="12" cy="14" r="2"/>
-              </svg>
+        <div className="flex items-center justify-between h-16 px-4 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <img src={aspetto.logo || '/logo-az.png'} alt={`Logo ${aspetto.nome}`} className="h-9 w-auto object-contain" data-testid="sidebar-logo" />
+            <div className="leading-tight" data-testid="sidebar-brand">
+              <div className="font-display text-base font-bold text-white tracking-tight">{aspetto.nome}</div>
+              <div className="text-[11px] font-medium text-neutral-400 uppercase tracking-[0.14em]">{aspetto.sottotitolo}</div>
             </div>
-            <span className="font-display text-lg font-bold text-white tracking-tight">
-              SMART-GEO
-            </span>
           </div>
           <button
             onClick={onClose}
-            className="lg:hidden p-1 rounded-md text-ink-400 hover:text-white hover:bg-ink-700 transition-colors"
+            className="lg:hidden p-1 rounded-md text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -162,9 +167,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }: SidebarProp
           {/* Navigazione */}
           <div>
             <div className="px-3 mb-2">
-              <span className="text-xs font-medium text-ink-500 uppercase tracking-wider">
-                Navigazione
-              </span>
+              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                {menu.gruppoPratiche}              </span>
             </div>
             <div className="space-y-1">
               {navigazioneItems.map(item => (
@@ -176,9 +180,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }: SidebarProp
           {/* Strumenti */}
           <div>
             <div className="px-3 mb-2">
-              <span className="text-xs font-medium text-ink-500 uppercase tracking-wider">
-                Strumenti
-              </span>
+              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                {menu.gruppoAmministrazione}              </span>
             </div>
             <div className="space-y-1">
               {strumentiItems.map(item => (
@@ -190,9 +193,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }: SidebarProp
           {/* Impostazioni */}
           <div>
             <div className="px-3 mb-2">
-              <span className="text-xs font-medium text-ink-500 uppercase tracking-wider">
-                Impostazioni
-              </span>
+              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                {menu.gruppoConfigurazione}              </span>
             </div>
             <div className="space-y-1">
               {impostazioniItems.map(item => (
@@ -203,9 +205,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }: SidebarProp
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-ink-700">
-          <div className="text-xs text-ink-500 text-center">
-            · Smart-Geo ·
+        <div className="px-5 py-4 border-t border-white/10">
+          <div className="text-[11px] text-neutral-400 leading-relaxed">
+            <div className="font-medium text-neutral-300">{aspetto.nomeCompleto}</div>
+            <div>© {new Date().getFullYear()} · Area riservata</div>
           </div>
         </div>
       </aside>

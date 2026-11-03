@@ -99,8 +99,25 @@
 .dark .border-gray-200,
 .dark .border-gray-300 { border-color: var(--ink-200) !important; }
 .dark .border-gray-400 { border-color: var(--ink-300) !important; }
-.dark .border-gray-600 { border-color: var(--ink-600) !important; }
-.dark .border-gray-700 { border-color: var(--ink-700) !important; }
+.dark .border-gray-500,
+.dark .border-gray-600 { border-color: var(--ink-300) !important; }
+.dark .divide-ink-100 > * + *, .dark .divide-ink-200 > * + *, .dark .divide-gray-200 > * + *, .dark .divide-gray-700 > * + * { border-color: var(--ink-200) !important; }
+.dark .bg-\[\#132F6E\], .dark .dark\:bg-\[\#132F6E\] { background-color: #2A2A2A !important; }
+.dark .border-signal-300, .dark .dark\:border-signal-700 { border-color: var(--ink-300) !important; }
+.dark .border-gray-700 { border-color: var(--ink-200) !important; }
+
+/* Pulsanti e testi grafite: in notte diventano grigio chiaro tenue, non bianco */
+.dark .bg-signal-500, .dark .bg-signal-600, .dark .bg-blue-500, .dark .bg-blue-600, .dark .bg-blue-700 {
+  background-color: #D4D4D4 !important;
+  color: #1A1A1A !important;
+  border-color: #D4D4D4 !important;
+}
+.dark .bg-signal-500 *, .dark .bg-signal-600 *, .dark .bg-blue-600 * { color: #1A1A1A !important; }
+.dark .hover\:bg-signal-600:hover, .dark .hover\:bg-blue-700:hover { background-color: #BDBDBD !important; }
+.dark .text-signal-500, .dark .text-signal-600, .dark .text-signal-700, .dark .text-signal-800, .dark .text-signal-900,
+.dark .text-blue-500, .dark .text-blue-600, .dark .text-sky-700, .dark .text-sky-800 { color: var(--ink-600) !important; }
+.dark .border-signal-500, .dark .border-signal-600, .dark .border-blue-500, .dark .border-blue-600 { border-color: var(--ink-400) !important; }
+.dark .bg-blue-50, .dark .bg-blue-100, .dark .bg-sky-50, .dark .bg-signal-50, .dark .bg-blue-900\/20 { background-color: var(--signal-50) !important; }
 
 /* === Hover background overrides === */
 .dark .hover\:bg-ink-50:hover { background-color: var(--ink-50) !important; }
@@ -175,7 +192,7 @@
   * {
     @apply border-ink-200;
   }
-  
+
   body {
     @apply bg-ink-50 text-ink-700;
     font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -199,23 +216,23 @@
   .btn {
     @apply inline-flex items-center justify-center rounded-md text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none;
   }
-  
+
   .btn-primary {
     @apply bg-signal-500 text-white hover:bg-signal-600 active:bg-signal-700 active:translate-y-0.5 px-4 py-2;
   }
-  
+
   .btn-secondary {
     @apply bg-topo-500 text-white hover:bg-topo-600 active:bg-topo-700 active:translate-y-0.5 px-4 py-2;
   }
-  
+
   .btn-outline {
     @apply border border-ink-300 bg-white text-ink-600 hover:bg-ink-50 active:bg-ink-100 active:translate-y-0.5 px-4 py-2;
   }
-  
+
   .btn-ghost {
     @apply bg-transparent text-ink-600 hover:bg-ink-100 active:bg-ink-200 active:translate-y-0.5 px-4 py-2;
   }
-  
+
   .btn-danger {
     @apply bg-error-500 text-white hover:bg-error-600 active:translate-y-0.5 px-4 py-2;
   }
@@ -224,15 +241,15 @@
   .card {
     @apply rounded-lg border border-ink-200 bg-white shadow-sm p-4 transition-all duration-150;
   }
-  
+
   .card-hover {
     @apply hover:shadow-md hover:-translate-y-0.5 cursor-pointer;
   }
-  
+
   .card-accent {
     @apply card border-t-2 border-t-signal-500;
   }
-  
+
   .card-flush {
     @apply rounded-lg border border-ink-200 bg-white shadow-sm p-0;
   }
@@ -241,45 +258,45 @@
   .input {
     @apply flex h-10 w-full rounded-md border border-ink-300 bg-white px-3 py-2 text-sm text-ink-700 placeholder:text-ink-400 transition-all duration-150 focus-visible:outline-none focus-visible:border-signal-500 focus-visible:ring-2 focus-visible:ring-signal-500/20 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-ink-100;
   }
-  
+
   .input-error {
     @apply border-error-500 focus-visible:border-error-500 focus-visible:ring-error-500/20;
   }
-  
+
   .input-mono {
     font-family: 'IBM Plex Mono', monospace;
   }
 
   /* Sidebar Styles */
   .sidebar-item {
-    @apply flex items-center gap-3 px-3 py-2 text-sm font-medium text-ink-300 rounded-md transition-all duration-150 hover:bg-ink-700/50 hover:text-white;
+    @apply flex items-center gap-3 px-3 py-2 text-sm font-medium text-neutral-300 rounded-md transition-all duration-150 hover:bg-white/10 hover:text-white;
   }
-  
+
   .sidebar-item-active {
-    @apply bg-white/5 text-white border-l-2 border-signal-500;
+    @apply bg-white/15 text-white border-l-2 border-white;
   }
 
   /* Badge Styles */
   .badge {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
   }
-  
+
   .badge-neutral {
     @apply bg-ink-100 text-ink-600;
   }
-  
+
   .badge-signal {
     @apply bg-signal-100 text-signal-700;
   }
-  
+
   .badge-success {
     @apply bg-topo-100 text-topo-700;
   }
-  
+
   .badge-warning {
     @apply bg-warning-50 text-warning-600;
   }
-  
+
   .badge-danger {
     @apply bg-error-50 text-error-600;
   }
@@ -288,36 +305,56 @@
   .table {
     @apply w-full text-sm;
   }
-  
+
   .table-header {
-    @apply sticky top-0 bg-ink-100 text-ink-500 text-xs uppercase tracking-wider;
+    @apply sticky top-0 bg-ink-100 text-ink-500 text-[11px] font-semibold uppercase tracking-[0.08em];
   }
-  
+
   .table-row {
     @apply border-b border-ink-200 hover:bg-ink-50 transition-colors;
   }
-  
+
   .table-cell {
     @apply px-4 py-3 text-left;
+  }
+
+  /* Elenchi pratiche: ogni valore su una sola riga (i due proprietari restano uno sotto l'altro) */
+  .tabella-distesa th,
+  .tabella-distesa td,
+  .tabella-distesa td > span {
+    white-space: nowrap;
+  }
+  .tabella-distesa .table-cell {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+  /* colonne dei flag (centrate) un po' pi\00F9 strette, pi\00F9 aria tra committente e proprietario */
+  .tabella-distesa .table-cell.text-center {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  .tabella-distesa tr > :nth-child(2) {
+    padding-right: 2rem;
   }
 
   /* Modal Styles */
   .modal-overlay {
     @apply fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/45 backdrop-blur-sm;
   }
-  
+
   .modal {
-    @apply bg-white rounded-lg shadow-xl border border-ink-200 animate-scale-in;
+    @apply bg-white rounded-lg shadow-xl border border-ink-200 animate-scale-in overflow-y-auto;
+    max-height: calc(100dvh - 2rem);
   }
-  
+
   .modal-header {
     @apply flex items-center justify-between px-6 py-4 border-b border-ink-200;
   }
-  
+
   .modal-body {
     @apply px-6 py-4;
   }
-  
+
   .modal-footer {
     @apply flex items-center justify-end gap-3 px-6 py-4 border-t border-ink-200;
   }
@@ -326,19 +363,19 @@
   .toast {
     @apply flex items-center gap-3 px-4 py-3 bg-white rounded-lg shadow-lg border border-ink-200 min-w-[300px] max-w-[400px];
   }
-  
+
   .toast-success {
     @apply border-l-4 border-l-topo-500;
   }
-  
+
   .toast-error {
     @apply border-l-4 border-l-error-500;
   }
-  
+
   .toast-warning {
     @apply border-l-4 border-l-warning-500;
   }
-  
+
   .toast-info {
     @apply border-l-4 border-l-info-500;
   }
@@ -347,15 +384,15 @@
   .context-menu {
     @apply bg-white rounded-lg shadow-lg border border-ink-200 py-1 min-w-[180px] max-w-[240px];
   }
-  
+
   .context-menu-item {
     @apply w-full flex items-center gap-2 px-3 py-2 text-sm text-ink-600 hover:bg-ink-100 transition-colors cursor-pointer;
   }
-  
+
   .context-menu-danger {
     @apply text-error-500 hover:bg-error-50;
   }
-  
+
   .context-menu-separator {
     @apply border-t border-ink-200 my-1;
   }
@@ -364,27 +401,27 @@
   .command-palette {
     @apply fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-ink-900/60 backdrop-blur-sm;
   }
-  
+
   .command-palette-content {
     @apply w-full max-w-[600px] bg-white rounded-xl shadow-xl border border-ink-200 overflow-hidden animate-scale-in;
   }
-  
+
   .command-palette-input {
     @apply w-full px-4 py-4 text-lg border-b border-ink-200 focus:outline-none;
   }
-  
+
   .command-palette-group {
     @apply py-2;
   }
-  
+
   .command-palette-label {
     @apply px-4 py-1 text-xs font-medium text-ink-500 uppercase tracking-wider;
   }
-  
+
   .command-palette-item {
     @apply flex items-center gap-3 px-4 py-2 text-sm text-ink-600 hover:bg-ink-50 cursor-pointer transition-colors;
   }
-  
+
   .command-palette-item-selected {
     @apply bg-signal-50 text-signal-700;
   }
@@ -398,15 +435,15 @@
   .quick-action {
     @apply card card-hover flex flex-col items-center gap-2 p-4 text-center;
   }
-  
+
   .quick-action-icon {
     @apply w-12 h-12 rounded-full bg-signal-500 flex items-center justify-center text-white;
   }
-  
+
   .quick-action-label {
     @apply text-sm font-medium text-ink-700;
   }
-  
+
   .quick-action-shortcut {
     @apply text-xs text-ink-400 font-mono;
   }
@@ -415,23 +452,23 @@
   .kpi-card {
     @apply card flex flex-col gap-2;
   }
-  
+
   .kpi-label {
     @apply text-xs font-medium text-ink-500 uppercase tracking-wider;
   }
-  
+
   .kpi-value {
     @apply text-2xl font-bold font-mono text-ink-700;
   }
-  
+
   .kpi-trend {
     @apply flex items-center gap-1 text-sm font-medium;
   }
-  
+
   .kpi-trend-positive {
     @apply text-topo-600;
   }
-  
+
   .kpi-trend-negative {
     @apply text-signal-600;
   }
@@ -440,23 +477,23 @@
   .activity-item {
     @apply flex items-start gap-3 py-3 border-b border-ink-100 last:border-0;
   }
-  
+
   .activity-icon {
     @apply w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0;
   }
-  
+
   .activity-content {
     @apply flex-1 min-w-0;
   }
-  
+
   .activity-title {
     @apply text-sm font-medium text-ink-700;
   }
-  
+
   .activity-subtitle {
     @apply text-xs text-ink-500;
   }
-  
+
   .activity-time {
     @apply text-xs text-ink-400;
   }
@@ -464,10 +501,25 @@
 
 /* Responsive utilities */
 @media (max-width: 640px) {
+  main table th,
+  main table td {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+
+  main h1 {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+
+  .modal-overlay {
+    padding: 0.5rem;
+  }
+
   .sidebar-mobile {
     @apply fixed inset-y-0 left-0 z-40 w-64 transform -translate-x-full transition-transform duration-200;
   }
-  
+
   .sidebar-mobile-open {
     @apply translate-x-0;
   }
@@ -477,7 +529,7 @@
   .sidebar-tablet {
     @apply w-16;
   }
-  
+
   .sidebar-tablet .sidebar-label {
     @apply hidden;
   }
@@ -485,8 +537,50 @@
 
 /* Grid Texture dark mode */
 .dark .grid-texture {
-  background-image: 
+  background-image:
     linear-gradient(to right, var(--ink-200) 1px, transparent 1px),
     linear-gradient(to bottom, var(--ink-200) 1px, transparent 1px);
   background-size: 22px 22px;
+}
+
+/* Telefono: finestre entro lo schermo visibile e tabelle pratiche a schede */
+@media (max-width: 767px) {
+  .max-h-\[90vh\], .max-h-\[95vh\], .max-h-\[85vh\] { max-height: calc(100dvh - 2rem) !important; }
+  [data-testid="fatture-scroll"] { max-height: none !important; overflow: visible !important; }
+  :has(> [data-testid="fatture-scroll"]) { overflow: visible !important; }
+  .modal-overlay { padding: 0.5rem; }
+  .modal-header, .modal-body, .modal-footer { padding-left: 1rem; padding-right: 1rem; }
+
+  :is(table.tabella-distesa, table.tabella-mobile),
+  :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) { display: block; width: 100% !important; min-width: 0 !important; min-height: 0 !important; }
+  :is(table.tabella-distesa, table.tabella-mobile) thead { display: block; position: static; }
+  :is(table.tabella-distesa, table.tabella-mobile) tfoot { position: static; }
+  [data-testid="fatture-scroll"] table.tabella-mobile > tfoot { position: sticky; bottom: 0; z-index: 10; }
+  [data-testid="fatture-scroll"] table.tabella-mobile > tfoot > tr.riga-scheda { margin: 0; border-radius: 0; padding: 0.5rem 0.75rem; grid-template-columns: repeat(3, 1fr); gap: 0.1rem 0.5rem; }
+  [data-testid="fatture-scroll"] table.tabella-mobile > tfoot > tr.riga-scheda > td { font-size: 12px !important; -webkit-text-stroke: 0 !important; }
+  [data-testid="fatture-scroll"] table.tabella-mobile > tfoot > tr.riga-scheda > td::before { font-size: 9px !important; margin-bottom: 0 !important; }
+  :is(table.tabella-distesa, table.tabella-mobile) thead tr:not(.riga-filtri) { display: none; }
+  :is(table.tabella-distesa, table.tabella-mobile) thead tr.riga-filtri { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; padding: 0.5rem; }
+  :is(table.tabella-distesa, table.tabella-mobile) thead tr.riga-filtri > * { display: block; padding: 0 !important; width: auto !important; min-width: 0 !important; }
+  :is(table.tabella-distesa, table.tabella-mobile) thead tr.riga-filtri > *:empty { display: none; }
+  :is(table.tabella-distesa, table.tabella-mobile) thead tr.riga-filtri > *[data-label]::before {
+    content: attr(data-label); display: block; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-500); margin-bottom: 2px;
+  }
+  :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) > tr { display: block; }
+  :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) > tr.riga-scheda {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 0.75rem;
+    margin: 0.5rem; padding: 0.75rem; border: 1px solid var(--ink-200); border-radius: 0.75rem;
+  }
+  :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) > tr.riga-scheda > td {
+    display: block; padding: 0.15rem 0 !important; width: auto !important; min-width: 0 !important;
+    max-width: none !important; white-space: normal !important; border: 0 !important; text-align: left !important;
+  }
+  :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) > tr.riga-scheda > td[data-label]::before {
+    content: attr(data-label); display: block; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-400); margin-bottom: 2px;
+  }
+  :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) > tr.riga-scheda > td.campo-largo { grid-column: 1 / -1; }
+  :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) > tr > td[colspan] { display: block; }
+  :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) > tr.riga-scheda > td > div { justify-content: flex-start; flex-wrap: wrap; }
 }

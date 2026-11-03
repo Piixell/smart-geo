@@ -4,13 +4,17 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Trash2,
-  X
+  X,
+  Columns3,
+  LayoutGrid,
+  Forward,
+  Check
 } from 'lucide-react';
 import {
   DndContext,
   DragOverlay,
   TouchSensor,
-  PointerSensor,
+  MouseSensor,
   useSensor,
   useSensors,
   pointerWithin,
@@ -45,7 +49,62 @@ interface PlannerTask {
   category: number; // ID della categoria
   week_start_date: string; // YYYY-MM-DD
   order_position: number;
+  completata: boolean;
 }
+
+// Azioni condivise dalle celle: inserimento rapido e spunta «fatta»
+interface AgendaAzioni {
+  bozza: { categoryId: number; day: string } | null;
+  chiudiBozza: () => void;
+  salvaRapida: (descrizione: string, categoryId: number, day: string) => Promise<void>;
+  toggle: (task: PlannerTask) => void;
+  categories: PlannerCategory[];
+}
+const AgendaCtx = React.createContext<AgendaAzioni | null>(null);
+const useAgenda = () => React.useContext(AgendaCtx)!;
+
+// Prima le attività da fare, in fondo quelle completate
+const perStato = (a: PlannerTask, b: PlannerTask) => Number(a.completata) - Number(b.completata);
+
+const QuickAdd: React.FC<{ categoryId: number; day: string; scegliCategoria?: boolean }> = ({ categoryId, day, scegliCategoria }) => {
+  const { chiudiBozza, salvaRapida, categories } = useAgenda();
+  const [testo, setTesto] = useState('');
+  const [cat, setCat] = useState(categoryId);
+  const salva = async () => {
+    const t = testo.trim();
+    chiudiBozza();
+    if (t) await salvaRapida(t, cat, day);
+  };
+  return (
+    <div onDoubleClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} className="rounded-md border border-ink-300 bg-white p-1.5 shadow-sm dark:border-gray-500 dark:bg-gray-800" data-testid="planner-rapida">
+      <textarea
+        autoFocus
+        rows={2}
+        value={testo}
+        onChange={(e) => setTesto(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); salva(); }
+          if (e.key === 'Escape') chiudiBozza();
+        }}
+        onBlur={salva}
+        placeholder="Scrivi e premi Invio"
+        className="w-full resize-none bg-transparent text-xs leading-relaxed text-ink-900 outline-none placeholder:text-ink-300 dark:text-white"
+        data-testid="planner-rapida-testo"
+      />
+      {scegliCategoria && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {categories.map((c) => (
+            <button key={c.id} type="button" onMouseDown={(e) => { e.preventDefault(); setCat(c.id); }}
+              className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider transition-colors ${cat === c.id ? 'text-white' : 'border-ink-100 text-ink-500 hover:border-ink-300'}`}
+              style={cat === c.id ? { backgroundColor: c.color, borderColor: c.color } : undefined} data-testid={`planner-rapida-cat-${c.id}`}>
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Giorni della settimana
 const DAYS_OF_WEEK = [
@@ -80,6 +139,51 @@ const formatDateLocal = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
+// Vista smartphone: sotto i 768px
+const useIsMobile = () => {
+  const query = '(max-width: 767px)';
+  const [mobile, setMobile] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const aggiorna = () => setMobile(mq.matches);
+    mq.addEventListener('change', aggiorna);
+    return () => mq.removeEventListener('change', aggiorna);
+  }, []);
+  return mobile;
+};
+
+const giornoDiOggi = () => {
+  const idx = (new Date().getDay() + 6) % 7;
+  return DAYS_OF_WEEK[Math.min(idx, DAYS_OF_WEEK.length - 1)].key;
+};
+
+// Linguetta giorno (smartphone): tocca per vedere il giorno, trascina una task sopra per spostarla
+const DayChip: React.FC<{ day: typeof DAYS_OF_WEEK[number]; date: Date; selected: boolean; count: number; dragging: boolean; onSelect: () => void }> = ({ day, date, selected, count, dragging, onSelect }) => {
+  const { setNodeRef, isOver } = useDroppable({ id: `daychip-${day.key}` });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      onClick={onSelect}
+      data-testid={`planner-giorno-${day.key}`}
+      className={`flex flex-1 flex-col items-center rounded-lg border px-1 py-2 text-xs font-semibold transition-colors ${
+        isOver ? 'border-blue-500 bg-blue-100 text-blue-800 ring-2 ring-blue-400' : selected ? 'border-ink-900 bg-ink-900 text-white' : dragging ? 'border-dashed border-blue-400 bg-blue-50 text-ink-700' : 'border-ink-200 bg-white text-ink-700'
+      }`}
+    >
+      <span>{day.short}</span>
+      <span className="text-base leading-tight">{date.getDate()}</span>
+      <span className={`mt-0.5 h-1.5 w-1.5 rounded-full ${count ? (selected ? 'bg-white' : 'bg-blue-500') : 'bg-transparent'}`} />
+    </button>
+  );
+};
+
+// Durante il trascinamento blocca lo scorrimento della pagina
+const bloccaScroll = (attivo: boolean) => {
+  document.body.classList.toggle('dnd-touch-fix', attivo);
+  const main = document.querySelector('main') as HTMLElement | null;
+  if (main) main.style.overflow = attivo ? 'hidden' : '';
+};
+
 // Componente per le task trascinabili
 interface DraggableTaskProps {
   task: PlannerTask;
@@ -88,7 +192,9 @@ interface DraggableTaskProps {
   onDelete: (taskId: number) => void;
 }
 
-const DraggableTask: React.FC<DraggableTaskProps> = ({ task, category, onEdit, onDelete }: DraggableTaskProps) => {
+const DraggableTask: React.FC<DraggableTaskProps & { mostraCategoria?: boolean }> = ({ task, category, onEdit, onDelete, mostraCategoria }) => {
+  const agenda = React.useContext(AgendaCtx);
+  const isMobile = useIsMobile();
   const {
     attributes,
     listeners,
@@ -114,14 +220,21 @@ const DraggableTask: React.FC<DraggableTaskProps> = ({ task, category, onEdit, o
       }}
       {...attributes}
       {...listeners}
+      data-testid={`planner-task-${task.id}`}
+      onClick={(e) => {
+        if (!isMobile) return;
+        e.stopPropagation();
+        onEdit(task);
+      }}
       onDoubleClick={(e) => {
         e.stopPropagation();
         onEdit(task);
       }}
 
       className={`
-        group bg-white dark:bg-gray-800 rounded-lg mb-1 shadow-sm border border-gray-200 dark:border-gray-700
-        cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-200 text-xs
+        group rounded-md mb-1 border dark:border-gray-700
+        cursor-grab active:cursor-grabbing transition-[box-shadow,border-color,opacity] duration-200 text-xs
+        ${task.completata ? 'border-transparent bg-ink-50/70 opacity-70 hover:opacity-90 dark:bg-gray-900/40' : 'border-ink-100 bg-white hover:border-ink-300 hover:shadow-sm dark:bg-gray-800'}
         ${isDragging ? 'opacity-50 rotate-1 scale-105' : ''}
         relative overflow-hidden touch-manipulation select-none
       `}
@@ -129,22 +242,38 @@ const DraggableTask: React.FC<DraggableTaskProps> = ({ task, category, onEdit, o
       {/* Striscetta colorata a sinistra */}
       <div 
         className="absolute left-0 top-0 bottom-0 w-1"
-        style={{ backgroundColor: category.color }}
+        style={{ backgroundColor: task.completata ? '#d4d4d8' : category.color }}
       ></div>
       
-      <div className="flex items-start justify-between p-2 pl-3">
+      <div className="flex items-start justify-between gap-1.5 p-2 pl-3">
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); agenda?.toggle(task); }}
+          className="group/fatta -m-2 flex shrink-0 cursor-pointer items-center justify-center rounded-full p-2 hover:bg-ink-100 dark:hover:bg-gray-700"
+          title={task.completata ? 'Segna come da fare' : 'Segna come fatta'}
+          data-testid={`planner-task-fatta-${task.id}`}
+        >
+          <span className={`flex h-4 w-4 items-center justify-center rounded-full border-[1.5px] transition-colors ${task.completata ? 'border-ink-400 bg-ink-400 text-white' : 'border-ink-300 group-hover/fatta:border-ink-700'}`}>
+            {task.completata && <Check className="h-3 w-3" strokeWidth={3} />}
+          </span>
+        </button>
         <div className="flex-1 min-w-0 pr-2">
-          <p className="font-medium text-gray-900 dark:text-white text-xs leading-relaxed break-words select-none">
+          {mostraCategoria && (
+            <span className="mb-0.5 block text-[9px] font-semibold uppercase tracking-wider" style={{ color: task.completata ? '#a1a1aa' : category.color }} data-testid={`planner-task-categoria-${task.id}`}>{category.name}</span>
+          )}
+          <p className={`font-medium text-xs leading-relaxed break-words select-none ${task.completata ? 'text-ink-400 line-through' : 'text-gray-900 dark:text-white'}`}>
             {task.description}
           </p>
         </div>
-        <div className="flex gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+        <div className="flex gap-1 flex-shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
           <button
             onClick={(e) => {
               e.stopPropagation();
               onDelete(task.id);
             }}
             className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+            data-testid={`planner-task-elimina-${task.id}`}
           >
             <Trash2 className="w-3 h-3" />
           </button>
@@ -180,7 +309,7 @@ const WeekDropZone: React.FC<WeekDropZoneProps> = ({ direction, isOver, canDrop 
         ${canDrop ? 'pointer-events-auto' : 'pointer-events-none'}
         ${canDrop ? 'bg-blue-500/30 border-2 border-blue-500 border-dashed' : 'bg-transparent'}
         ${isOver && canDrop ? 'bg-blue-500/50' : ''}
-        flex flex-col items-center justify-center rounded-lg
+        hidden md:flex flex-col items-center justify-center rounded-lg
       `}
     >
       {canDrop && (
@@ -201,9 +330,13 @@ interface GridCellProps {
   tasks: PlannerTask[];
   onEdit: (task: PlannerTask) => void;
   onDelete: (taskId: number) => void;
+  compatta?: boolean;
+  oggi?: boolean;
 }
 
-const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDelete }: GridCellProps) => {
+const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDelete, compatta, oggi }: GridCellProps) => {
+  const { bozza } = useAgenda();
+  const inScrittura = bozza?.categoryId === category.id && bozza.day === day;
   const { setNodeRef, isOver, active } = useDroppable({
     id: `${category.id}-${day}`,
   });
@@ -214,17 +347,18 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
   return (
     <div 
       ref={setNodeRef}
+      onDoubleClick={() => window.dispatchEvent(new CustomEvent('addTaskToCell', { detail: { categoryId: category.id, day } }))}
+      title="Doppio clic per aggiungere un'attività"
+      data-testid={`planner-cella-${category.id}-${day}`}
       className={`
-        group p-2 border border-gray-200 dark:border-gray-700 transition-all duration-200
-        bg-white dark:bg-gray-800 relative flex flex-col
-        ${isOver && canDrop ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600 border-2' : ''}
-        ${canDrop && !isOver ? 'border-dashed border-gray-400 dark:border-gray-500' : ''}
-        min-h-[120px]
+        group p-2 border-b border-r border-ink-100 dark:border-gray-700 transition-colors duration-200
+        relative flex flex-col
+        ${isOver && canDrop ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-inset ring-blue-300' : oggi ? 'bg-ink-100 dark:bg-gray-700/50' : 'bg-white dark:bg-gray-800'}
       `}
-      style={{ minHeight: Math.max(120, tasks.length * 45 + 60) + 'px' }}
+      style={{ minHeight: compatta ? Math.max(64, tasks.length * 45 + 48) + 'px' : Math.max(84, tasks.length * 45 + 44) + 'px' }}
     >
-      {/* Bottone + per aggiungere task */}
-      <button
+      {/* Bottone + per aggiungere task (solo smartphone, dove il doppio clic non è comodo) */}
+      {compatta && <button
         onClick={(e) => {
           e.stopPropagation();
           // Chiama la funzione per aggiungere task con categoria e giorno preimpostati
@@ -243,7 +377,7 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
         title="Aggiungi task"
       >
         +
-      </button>
+      </button>}
 
       <SortableContext items={tasks.map(t => t.id.toString())} strategy={verticalListSortingStrategy}>
         <div className="space-y-1 flex-1 min-h-0">
@@ -256,6 +390,7 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
               onDelete={onDelete}
             />
           ))}
+          {inScrittura && <QuickAdd categoryId={category.id} day={day} />}
           
           {/* Area di drop invisibile che occupa tutto lo spazio rimanente */}
           {canDrop && (
@@ -266,6 +401,35 @@ const GridCell: React.FC<GridCellProps> = ({ category, day, tasks, onEdit, onDel
     </div>
   );
 };
+
+// Vista per giorno: una colonna per giorno, le task portano l'etichetta della categoria
+const DayColumn: React.FC<{ day: typeof DAYS_OF_WEEK[number]; date: Date; oggi: boolean; tasks: PlannerTask[]; categories: PlannerCategory[]; onEdit: (t: PlannerTask) => void; onDelete: (id: number) => void; onAdd: () => void }> = ({ day, date, oggi, tasks, categories, onEdit, onDelete, onAdd }) => {
+  const { setNodeRef, isOver, active } = useDroppable({ id: `day-${day.key}` });
+  const { bozza } = useAgenda();
+  return (
+    <div ref={setNodeRef} onDoubleClick={onAdd} title="Doppio clic per aggiungere un'attività" className={`flex min-h-[460px] flex-col border-r border-ink-100 last:border-r-0 dark:border-gray-700 ${isOver && active ? 'bg-blue-50 dark:bg-blue-900/20' : oggi ? 'bg-ink-100 dark:bg-gray-700/50' : 'bg-white dark:bg-gray-800'}`} data-testid={`planner-colonna-${day.key}`}>
+      <IntestazioneGiorno day={day} date={date} oggi={oggi} conteggio={tasks.filter(t => !t.completata).length} />
+      <SortableContext items={tasks.map(t => t.id.toString())} strategy={verticalListSortingStrategy}>
+        <div className="flex-1 space-y-1 p-2">
+          {tasks.map((task) => (
+            <DraggableTask key={task.id} task={task} category={categories.find(c => c.id === task.category) || categories[0]} onEdit={onEdit} onDelete={onDelete} mostraCategoria />
+          ))}
+          {bozza?.day === day.key && <QuickAdd categoryId={bozza.categoryId} day={day.key} scegliCategoria />}
+        </div>
+      </SortableContext>
+    </div>
+  );
+};
+
+const IntestazioneGiorno: React.FC<{ day: typeof DAYS_OF_WEEK[number]; date: Date; oggi: boolean; conteggio: number }> = ({ day, date, oggi, conteggio }) => (
+  <div className={`flex items-center justify-between border-b border-ink-100 px-3 py-2.5 dark:border-gray-700 ${oggi ? 'bg-ink-900 text-white' : 'bg-ink-50 text-ink-700 dark:bg-gray-700 dark:text-gray-200'}`}>
+    <div className="flex items-baseline gap-2">
+      <span className="text-xl font-bold tabular-nums leading-none">{date.getDate()}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-wider">{day.label}</span>
+    </div>
+    {conteggio > 0 && <span className={`rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${oggi ? 'bg-white/20' : 'bg-white text-ink-500 dark:bg-gray-800'}`}>{conteggio}</span>}
+  </div>
+);
 
 export const Planner: React.FC = () => {
   const { user } = useAuthStore();
@@ -324,18 +488,26 @@ export const Planner: React.FC = () => {
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
         distance: 8,
       },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 0,
-        tolerance: 15,
+        delay: 250,
+        tolerance: 8,
       },
     })
   );
+  const isMobile = useIsMobile();
+  const [giornoMobile, setGiornoMobile] = useState(giornoDiOggi);
+  const [vista, setVista] = useState<'giorni' | 'categorie'>(() => (localStorage.getItem('agenda-vista') === 'categorie' ? 'categorie' : 'giorni'));
+  const cambiaVista = (v: 'giorni' | 'categorie') => {
+    setVista(v);
+    localStorage.setItem('agenda-vista', v);
+  };
+  const [spostando, setSpostando] = useState(false);
 
   // Carica categorie dal database
   const loadCategories = async () => {
@@ -406,7 +578,7 @@ export const Planner: React.FC = () => {
           updates.push(
             supabase
               .from('planner_tasks')
-              .update({ order_position: index })
+              .update({ order_position: index }).eq('user_id', user?.id)
               .eq('id', task.id)
           );
           task.order_position = index; // Aggiorna anche l'oggetto locale
@@ -472,7 +644,7 @@ export const Planner: React.FC = () => {
     setDragOver(null);
     
     // Aggiungi classe per bloccare il touch su tutto il documento durante il drag
-    document.body.classList.add('dnd-touch-fix');
+    bloccaScroll(true);
     
     // Feedback aptico su mobile (vibrazione se supportata)
     if ('vibrate' in navigator && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
@@ -491,12 +663,37 @@ export const Planner: React.FC = () => {
     if (!over) {
       setActiveId(null);
       setDragOver(null);
-      document.body.classList.remove('dnd-touch-fix');
+      bloccaScroll(false);
       return;
     }
 
     const activeId = Number(active.id);
     const overId = over.id as string;
+
+    // Vista per giorno: rilascio su un'altra task sposta solo il giorno (la categoria resta)
+    const overTaskGiorni = vista === 'giorni' && !isMobile && !overId.includes('-') ? tasks.find(t => t.id === Number(overId)) : undefined;
+    const taskAttiva = tasks.find(t => t.id === activeId);
+    const versoGiorno = overId.startsWith('daychip-') || overId.startsWith('day-') || (overTaskGiorni && taskAttiva && (overTaskGiorni.day !== taskAttiva.day || overTaskGiorni.category !== taskAttiva.category));
+    if (versoGiorno) {
+      const nuovoGiorno = overTaskGiorni ? overTaskGiorni.day : overId.replace(/^(daychip|day)-/, '');
+      const task = taskAttiva;
+      if (task && task.day !== nuovoGiorno) {
+        const posizioni = tasks.filter(t => t.category === task.category && t.day === nuovoGiorno).map(t => t.order_position);
+        const nextPosition = posizioni.length ? Math.max(...posizioni) + 1 : 0;
+        setTasks(prev => prev.map(t => t.id === activeId ? { ...t, day: nuovoGiorno, order_position: nextPosition } : t));
+        const { error } = await supabase.from('planner_tasks').update({ day: nuovoGiorno, order_position: nextPosition }).eq('user_id', user?.id).eq('id', activeId);
+        if (error) {
+          toast.error('Errore nello spostamento della task');
+          loadTasks();
+        } else {
+          toast.success(`Task spostata a ${DAYS_OF_WEEK.find(d => d.key === nuovoGiorno)?.label}`);
+        }
+      }
+      setActiveId(null);
+      setDragOver(null);
+      bloccaScroll(false);
+      return;
+    }
 
     // Gestione cambio settimana
     if (overId === 'week-prev' || overId === 'week-next') {
@@ -519,7 +716,7 @@ export const Planner: React.FC = () => {
 
         supabase
           .from('planner_tasks')
-          .update({ week_start_date: newWeekStartStr })
+          .update({ week_start_date: newWeekStartStr }).eq('user_id', user?.id)
           .eq('id', activeId)
           .then(({ error }) => {
             if (error) {
@@ -536,7 +733,7 @@ export const Planner: React.FC = () => {
 
       setActiveId(null);
       setDragOver(null);
-      document.body.classList.remove('dnd-touch-fix');
+      bloccaScroll(false);
       return;
     }
 
@@ -578,7 +775,7 @@ export const Planner: React.FC = () => {
             const updates = reorderedTasks.map((task, index) => 
               supabase
                 .from('planner_tasks')
-                .update({ order_position: index })
+                .update({ order_position: index }).eq('user_id', user?.id)
                 .eq('id', task.id)
             );
             
@@ -610,7 +807,7 @@ export const Planner: React.FC = () => {
               category: overTask.category, 
               day: overTask.day,
               order_position: nextPosition
-            })
+            }).eq('user_id', user?.id)
             .eq('id', activeId)
             .then(({ error }) => {
               if (error) {
@@ -649,7 +846,7 @@ export const Planner: React.FC = () => {
             category: newCategoryId, 
             day: newDay,
             order_position: nextPosition
-          })
+          }).eq('user_id', user?.id)
           .eq('id', activeId)
           .then(({ error }) => {
             if (error) {
@@ -663,7 +860,7 @@ export const Planner: React.FC = () => {
 
     setActiveId(null);
     setDragOver(null);
-    document.body.classList.remove('dnd-touch-fix');
+    bloccaScroll(false);
   };
 
   // Gestione task
@@ -677,15 +874,35 @@ export const Planner: React.FC = () => {
     setShowModal(true);
   };
 
-  // Gestione task con parametri preimpostati
+  // Doppio clic su una cella: casella di scrittura rapida al posto della finestra
+  const [bozza, setBozza] = useState<{ categoryId: number; day: string } | null>(null);
   const handleAddTaskToCell = (categoryId: number, day: string) => {
-    setEditingTask(null);
-    setFormData({
-      description: '',
-      category: categoryId,
-      day: day,
-    });
-    setShowModal(true);
+    setBozza({ categoryId, day });
+  };
+
+  const salvaRapida = async (descrizione: string, categoryId: number, day: string) => {
+    const weekStartStr = formatDateLocal(currentWeekStart);
+    const posizioni = tasks.filter(t => t.category === categoryId && t.day === day).map(t => t.order_position);
+    const { data, error } = await supabase
+      .from('planner_tasks')
+      .insert([{ description: descrizione, category: categoryId, day, week_start_date: weekStartStr, order_position: posizioni.length ? Math.max(...posizioni) + 1 : 0, user_id: user?.id }])
+      .select()
+      .single();
+    if (error) {
+      toast.error('Errore nel salvataggio della task');
+      return;
+    }
+    setTasks(prev => [...prev, data]);
+  };
+
+  const toggleFatta = async (task: PlannerTask) => {
+    const completata = !task.completata;
+    setTasks(prev => prev.map(t => (t.id === task.id ? { ...t, completata } : t)));
+    const { error } = await supabase.from('planner_tasks').update({ completata }).eq('id', task.id).eq('user_id', user?.id);
+    if (error) {
+      toast.error('Errore nel salvataggio');
+      loadTasks();
+    }
   };
 
   const handleEditTask = (task: PlannerTask) => {
@@ -706,7 +923,7 @@ export const Planner: React.FC = () => {
       console.log('🗑️ Eliminazione task dal database...');
       const { error } = await supabase
         .from('planner_tasks')
-        .delete()
+        .delete().eq('user_id', user?.id)
         .eq('id', taskId);
 
       if (error) throw error;
@@ -740,7 +957,7 @@ export const Planner: React.FC = () => {
 
         const { error } = await supabase
           .from('planner_tasks')
-          .update(taskData)
+          .update(taskData).eq('user_id', user?.id)
           .eq('id', editingTask.id);
 
         if (error) throw error;
@@ -791,6 +1008,54 @@ export const Planner: React.FC = () => {
     }
   };
 
+  // Porta le attività ancora da fare alla settimana successiva (stesso giorno e categoria, in coda); le completate restano
+  const spostaAllaSettimanaDopo = async () => {
+    const daFare = tasks.filter(t => !t.completata);
+    const n = daFare.length;
+    if (!n || !confirm(n === 1 ? "Spostare l'attività rimasta alla settimana successiva?" : `Spostare le ${n} attività rimaste alla settimana successiva?`)) return;
+    setSpostando(true);
+    try {
+      const dopo = new Date(currentWeekStart);
+      dopo.setDate(dopo.getDate() + 7);
+      const dopoStr = formatDateLocal(dopo);
+      const { data: esistenti, error } = await supabase.from('planner_tasks').select('category, day, order_position').eq('user_id', user?.id).eq('week_start_date', dopoStr);
+      if (error) throw error;
+      const prossima: Record<string, number> = {};
+      (esistenti || []).forEach(t => {
+        const k = `${t.category}-${t.day}`;
+        prossima[k] = Math.max(prossima[k] ?? 0, t.order_position + 1);
+      });
+      const ordinate = [...daFare].sort((a, b) => a.order_position - b.order_position);
+      const risultati = await Promise.all(ordinate.map(t => {
+        const k = `${t.category}-${t.day}`;
+        const pos = prossima[k] ?? 0;
+        prossima[k] = pos + 1;
+        return supabase.from('planner_tasks').update({ week_start_date: dopoStr, order_position: pos }).eq('user_id', user?.id).eq('id', t.id);
+      }));
+      if (risultati.some(r => r.error)) throw risultati.find(r => r.error)!.error;
+      toast.success(ordinate.length === 1 ? 'Attività spostata alla settimana successiva' : `${ordinate.length} attività spostate alla settimana successiva`);
+      setCurrentWeekStart(dopo);
+    } catch (error) {
+      console.error('Errore spostamento settimana:', error);
+      toast.error('Errore nello spostamento delle attività');
+      loadTasks();
+    } finally {
+      setSpostando(false);
+    }
+  };
+
+  const dataGiorno = (i: number) => {
+    const d = new Date(currentWeekStart);
+    d.setDate(currentWeekStart.getDate() + i);
+    return d;
+  };
+  const oggiStr = formatDateLocal(new Date());
+  const tasksDelGiorno = (day: string) => tasks.filter(t => t.day === day).sort((a, b) => {
+    const ca = categories.findIndex(c => c.id === a.category);
+    const cb = categories.findIndex(c => c.id === b.category);
+    return perStato(a, b) || ca - cb || a.order_position - b.order_position;
+  });
+
   // Navigazione settimana
   const navigateWeek = (direction: 'prev' | 'next') => {
     setCurrentWeekStart(prev => {
@@ -813,15 +1078,7 @@ export const Planner: React.FC = () => {
   const getTasksForCategoryAndDay = (categoryId: number, day: string) => {
     return tasks
       .filter(task => task.category === categoryId && task.day === day)
-      .sort((a, b) => a.order_position - b.order_position);
-  };
-
-  // Formatta data settimana
-  const formatWeekRange = () => {
-    const endDate = new Date(currentWeekStart);
-    endDate.setDate(currentWeekStart.getDate() + 6);
-    
-    return `${currentWeekStart.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} - ${endDate.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+      .sort((a, b) => perStato(a, b) || a.order_position - b.order_position);
   };
 
   const activeTask = activeId ? tasks.find(task => task.id === activeId) : null;
@@ -829,24 +1086,40 @@ export const Planner: React.FC = () => {
   return (
     <div className="flex flex-col gap-6 planner-container">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Planner</h1>
-          <p className="text-gray-600 dark:text-gray-300">Gestione settimanale delle attività</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Agenda settimanale</h1>
+          <p className="text-gray-600 dark:text-gray-300">Organizza le attività della settimana</p>
         </div>
-        <button
-          onClick={handleAddTask}
-          className="btn btn-primary flex items-center gap-2"
-          disabled={categories.length === 0}
-        >
-          <Plus className="w-4 h-4" />
-          Aggiungi task
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {!isMobile && (
+            <div className="inline-flex rounded-lg border border-ink-200 bg-white p-0.5 dark:border-gray-600 dark:bg-gray-800" data-testid="planner-vista-switch">
+              {([['giorni', 'Per giorno', Columns3], ['categorie', 'Per categoria', LayoutGrid]] as const).map(([v, label, Icona]) => (
+                <button key={v} onClick={() => cambiaVista(v)} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${vista === v ? 'bg-ink-900 text-white' : 'text-ink-600 hover:text-ink-900 dark:text-gray-300'}`} data-testid={`planner-switch-${v}`}>
+                  <Icona className="h-3.5 w-3.5" /> {label}
+                </button>
+              ))}
+            </div>
+          )}
+          <button onClick={spostaAllaSettimanaDopo} disabled={!tasks.some(t => !t.completata) || spostando} className="btn btn-secondary flex items-center gap-2 disabled:opacity-50" data-testid="planner-sposta-settimana" title="Porta le attività rimaste alla settimana successiva">
+            <Forward className="w-4 h-4" />
+            {spostando ? 'Spostamento…' : 'Sposta alla settimana dopo'}
+          </button>
+          <button
+            onClick={handleAddTask}
+            className="btn btn-primary flex items-center gap-2"
+            disabled={categories.length === 0}
+            data-testid="planner-aggiungi-task"
+          >
+            <Plus className="w-4 h-4" />
+            Nuova attività
+          </button>
+        </div>
       </div>
 
       {/* Controlli settimana */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
+      <div className="card overflow-hidden p-0">
+        <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3 dark:border-gray-700">
           <button
             onClick={() => navigateWeek('prev')}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
@@ -854,15 +1127,13 @@ export const Planner: React.FC = () => {
             <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
           </button>
           
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              {formatWeekRange()}
-            </h2>
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={goToCurrentWeek}
-              className="px-3 py-1 text-sm bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
+              className="rounded-md border border-ink-200 px-3 py-1 text-xs font-semibold text-ink-700 transition-colors hover:bg-ink-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+              data-testid="planner-oggi"
             >
-              Oggi
+              Vai a oggi
             </button>
           </div>
           
@@ -881,12 +1152,14 @@ export const Planner: React.FC = () => {
             </p>
           </div>
         ) : (
+          <AgendaCtx.Provider value={{ bozza, chiudiBozza: () => setBozza(null), salvaRapida, toggle: toggleFatta, categories }}>
           <DndContext
             sensors={sensors}
             collisionDetection={pointerWithin}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
+            onDragCancel={() => { setActiveId(null); setDragOver(null); bloccaScroll(false); }}
           >
             {/* Container con zone di drop */}
             <div className="relative">
@@ -903,39 +1176,80 @@ export const Planner: React.FC = () => {
               />
               
               {/* Griglia planner */}
-              <div className="overflow-x-auto" style={{ minHeight: '600px' }}>
-                <div className="min-w-[800px]">
+              {/* Smartphone: un giorno alla volta */}
+              {isMobile ? (
+                <div data-testid="planner-vista-mobile" className="p-3">
+                  <div className="sticky top-0 z-30 -mx-1 mb-3 flex gap-1 bg-white px-1 pb-2 dark:bg-gray-800">
+                    {DAYS_OF_WEEK.map((day, i) => {
+                      const data = new Date(currentWeekStart);
+                      data.setDate(currentWeekStart.getDate() + i);
+                      return (
+                        <DayChip
+                          key={day.key}
+                          day={day}
+                          date={data}
+                          selected={giornoMobile === day.key}
+                          count={tasks.filter(t => t.day === day.key && !t.completata).length}
+                          dragging={activeId !== null}
+                          onSelect={() => setGiornoMobile(day.key)}
+                        />
+                      );
+                    })}
+                  </div>
+                  <p className="mb-3 text-xs text-ink-500">Tocca una task per modificarla. Tienila premuta e trascinala su un altro giorno per spostarla.</p>
+                  <div className="space-y-3">
+                    {categories.map((category) => (
+                      <div key={category.id} className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 dark:bg-gray-700">
+                          <div className="h-3 w-3 rounded-full" style={{ backgroundColor: category.color }} />
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">{category.name}</span>
+                        </div>
+                        <GridCell
+                          category={category}
+                          day={giornoMobile}
+                          tasks={getTasksForCategoryAndDay(category.id, giornoMobile)}
+                          onEdit={handleEditTask}
+                          onDelete={handleDeleteTask}
+                          compatta
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : vista === 'giorni' ? (
+                <div className="overflow-x-auto" data-testid="planner-vista-giorni">
+                  <div className="grid min-w-[900px] grid-cols-6">
+                    {DAYS_OF_WEEK.map((day, i) => (
+                      <DayColumn key={day.key} day={day} date={dataGiorno(i)} oggi={formatDateLocal(dataGiorno(i)) === oggiStr} tasks={tasksDelGiorno(day.key)} categories={categories}
+                        onEdit={handleEditTask} onDelete={handleDeleteTask} onAdd={() => handleAddTaskToCell(categories[0].id, day.key)} />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+              <div className="overflow-x-auto" data-testid="planner-vista-categorie">
+                <div className="min-w-[900px]">
                 {/* Header giorni */}
-                <div className="grid grid-cols-7 gap-0">
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 font-medium text-gray-700 dark:text-gray-300">
+                <div className="grid grid-cols-[11rem_repeat(6,minmax(0,1fr))]">
+                  <div className="border-b border-r border-ink-100 bg-ink-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-ink-500 dark:border-gray-700 dark:bg-gray-700">
                     Categoria
                   </div>
-                  {DAYS_OF_WEEK.map((day) => (
-                    <div key={day.key} className="p-3 text-center bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 font-medium text-gray-700 dark:text-gray-300">
-                      <div className="hidden sm:block">{day.label}</div>
-                      <div className="sm:hidden">{day.short}</div>
-                    </div>
+                  {DAYS_OF_WEEK.map((day, i) => (
+                    <IntestazioneGiorno key={day.key} day={day} date={dataGiorno(i)} oggi={formatDateLocal(dataGiorno(i)) === oggiStr} conteggio={0} />
                   ))}
                 </div>
 
                 {/* Righe categorie */}
                 {categories.map((category) => (
-                  <div key={category.id} className="grid grid-cols-7 gap-0">
+                  <div key={category.id} className="grid grid-cols-[11rem_repeat(6,minmax(0,1fr))]" data-testid={`planner-riga-${category.id}`}>
                     {/* Nome categoria */}
-                    <div className="p-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 flex items-center">
-                      <div className="flex items-center gap-2">
-                        <div 
-                          className="w-3 h-3 rounded-full flex-shrink-0" 
-                          style={{ backgroundColor: category.color }}
-                        ></div>
-                        <span className="font-medium text-gray-900 dark:text-white text-sm">
-                          {category.name}
-                        </span>
-                      </div>
+                    <div className="flex items-center gap-2 border-b border-r border-ink-100 bg-ink-50/60 px-3 py-2 dark:border-gray-700 dark:bg-gray-700" style={{ boxShadow: `inset 3px 0 0 ${category.color}` }}>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-ink-800 dark:text-white">
+                        {category.name}
+                      </span>
                     </div>
                     
                     {/* Celle giorni */}
-                    {DAYS_OF_WEEK.map((day) => (
+                    {DAYS_OF_WEEK.map((day, i) => (
                       <GridCell
                         key={`${category.slug}-${day.key}`}
                         category={category}
@@ -943,12 +1257,14 @@ export const Planner: React.FC = () => {
                         tasks={getTasksForCategoryAndDay(category.id, day.key)}
                         onEdit={handleEditTask}
                         onDelete={handleDeleteTask}
+                        oggi={formatDateLocal(dataGiorno(i)) === oggiStr}
                       />
                     ))}
                   </div>
                 ))}
                 </div>
               </div>
+              )}
             </div>
 
             <DragOverlay>
@@ -959,11 +1275,13 @@ export const Planner: React.FC = () => {
                     category={categories.find(c => c.id === activeTask.category) || categories[0]}
                     onEdit={() => {}}
                     onDelete={() => {}}
+                    mostraCategoria={vista === 'giorni'}
                   />
                 </div>
               ) : null}
             </DragOverlay>
           </DndContext>
+          </AgendaCtx.Provider>
         )}
       </div>
 
@@ -973,7 +1291,7 @@ export const Planner: React.FC = () => {
           <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                {editingTask ? 'Modifica Task' : 'Nuova Task'}
+                {editingTask ? 'Modifica attività' : 'Nuova attività'}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
@@ -1000,6 +1318,7 @@ export const Planner: React.FC = () => {
                   className="input w-full resize-none"
                   rows={3}
                   placeholder="Descrizione della task"
+                  data-testid="planner-modal-descrizione"
                 />
               </div>
 
@@ -1012,6 +1331,7 @@ export const Planner: React.FC = () => {
                     value={formData.category}
                     onChange={(e) => setFormData(prev => ({ ...prev, category: parseInt(e.target.value) }))}
                     className="input w-full"
+                    data-testid="planner-modal-categoria"
                   >
                     {categories.map((category) => (
                       <option key={category.id} value={category.id}>
@@ -1029,6 +1349,7 @@ export const Planner: React.FC = () => {
                     value={formData.day}
                     onChange={(e) => setFormData(prev => ({ ...prev, day: e.target.value }))}
                     className="input w-full"
+                    data-testid="planner-modal-giorno"
                   >
                     {DAYS_OF_WEEK.map((day) => (
                       <option key={day.key} value={day.key}>
@@ -1046,6 +1367,7 @@ export const Planner: React.FC = () => {
               <button
                 onClick={() => setShowModal(false)}
                 className="btn btn-outline"
+                data-testid="planner-modal-annulla"
               >
                 Annulla
               </button>
@@ -1053,6 +1375,7 @@ export const Planner: React.FC = () => {
                 onClick={handleSaveTask}
                 className="btn btn-primary"
                 disabled={!formData.description.trim()}
+                data-testid="planner-modal-salva"
               >
                 {editingTask ? 'Modifica' : 'Salva'}
               </button>

@@ -1,58 +1,35 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, ChevronDown, Edit, Trash2, Check, X, Copy, ArrowRightCircle, User, Search } from 'lucide-react';
+import { Plus, ChevronDown, Trash2, X, Copy, User, Search } from 'lucide-react';
+import { PagamentoToggle, statoPagamento } from '../components/PagamentoToggle';
+import { FiltroSelect } from '../components/FiltroSelect';
 import { supabase } from '../services/supabase';
+import { cfg } from '../services/impostazioni';
+import { useApriDaRicerca } from '../hooks/useApriDaRicerca';
+import { useFiltroDashboard, filtroDashboardInUrl } from '../hooks/useFiltroDashboard';
 import { useAuthStore } from '../store/authStore';
-import { RubricaAutocomplete } from '../components/RubricaAutocomplete';
 import { syncRubricaFromPratica } from '../utils/rubricaSync';
+import { conMail2, mail2Opzionale } from '../utils/mail2';
+import { ContattiPratica, RUBRICA_DEFAULT, type RubricaFlags } from '../components/ContattiPratica';
+import { useConfermaRubrica } from '../components/ConfermaRubrica';
 import { ContextMenu } from '../components/ContextMenu';
-import type { Varie, StatoVarie, TipoIncarico, Rubrica } from '../types';
+import { CommittenteSelect } from '../components/CommittenteSelect';
+import type { Varie, StatoVarie, TipoIncarico } from '../types';
 import toast from 'react-hot-toast';
 
-const TriStateFilter = ({ value, onChange }: {
-  value: 'all' | 'yes' | 'no';
-  onChange: (v: 'all' | 'yes' | 'no') => void;
-}) => (
-  <div className="flex items-center justify-center gap-0.5">
-    <button
-      onClick={() => onChange('all')}
-      title="Tutti"
-      className={`p-1 rounded-md transition-all duration-150 ${
-        value === 'all'
-          ? 'bg-ink-200 shadow-sm'
-          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
-      }`}
-    >
-      <div className="w-2.5 h-0.5 bg-ink-400 rounded" />
-    </button>
-    <button
-      onClick={() => onChange('yes')}
-      title="Si"
-      className={`p-1 rounded-md transition-all duration-150 ${
-        value === 'yes'
-          ? 'bg-ink-200 shadow-sm'
-          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
-      }`}
-    >
-      <Check className="w-3 h-3 text-topo-500" />
-    </button>
-    <button
-      onClick={() => onChange('no')}
-      title="No"
-      className={`p-1 rounded-md transition-all duration-150 ${
-        value === 'no'
-          ? 'bg-ink-200 shadow-sm'
-          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
-      }`}
-    >
-      <X className="w-3 h-3 text-error-500" />
-    </button>
-  </div>
-);
+import { caricaTipiIncaricoVarie, type TipoIncaricoVarie } from '../components/TipiIncaricoVarieSection';
+import { ContattiPraticaModal } from '../components/ContattiPraticaModal';
+
 
 export const VariePage: React.FC = () => {
   const [varie, setVarie] = useState<Varie[]>([]);
   const [stati, setStati] = useState<StatoVarie[]>([]);
   const [tipiIncarico, setTipiIncarico] = useState<TipoIncarico[]>([]);
+  const [tipiVarie, setTipiVarie] = useState<TipoIncaricoVarie[]>([]);
+  useEffect(() => {
+    caricaTipiIncaricoVarie().then(setTipiVarie);
+  }, []);
+  const TIPI_INCARICO_VARIE = tipiVarie.map((t) => t.descrizione);
+  const conApe = (tipo: string) => !!tipiVarie.find((t) => t.descrizione === tipo)?.ape;
   const [loading, setLoading] = useState(true);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
@@ -83,14 +60,14 @@ const [columnFilters, setColumnFilters] = useState<{
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(() => {
-    const saved = localStorage.getItem('varie-records-per-page');
+    const saved = localStorage.getItem('varie-records-per-page-v2');
     if (saved) {
       const parsed = parseInt(saved);
-      if ([25, 50, 100, 200].includes(parsed)) {
+      if ([25, 50, 100, 200, 500, 1000].includes(parsed)) {
         return parsed;
       }
     }
-    return 25;
+    return cfg().pagine.righePratiche;
   });
   const [totalRecords, setTotalRecords] = useState(0);
   const [showModal, setShowModal] = useState(false);
@@ -109,6 +86,7 @@ const [columnFilters, setColumnFilters] = useState<{
     telefono: '',
     telefono2: '',
     mail: '',
+    mail2: '',
     registrazione: '',
     tipo_incarico: '',
     acconto: false,
@@ -173,12 +151,14 @@ const [columnFilters, setColumnFilters] = useState<{
     };
   }, [contextMenu.varia]);
 
+  const ultimaRichiesta = React.useRef(0);
   const fetchData = async (customFilters?: {
     columnFilters?: typeof columnFilters;
     presetFilters?: typeof presetFilters;
     page?: number;
     perPage?: number;
   }) => {
+    const mia = ++ultimaRichiesta.current;
     try {
       setLoading(true);
 
@@ -227,13 +207,13 @@ const [columnFilters, setColumnFilters] = useState<{
       }
 
       if (currentFilters.acconto === 'yes') {
-        countQuery = countQuery.eq('acconto', true);
+        countQuery = countQuery.eq('acconto', true).not('omaggio', 'is', true);
       } else if (currentFilters.acconto === 'no') {
         countQuery = countQuery.eq('acconto', false);
       }
 
       if (currentFilters.saldo === 'yes') {
-        countQuery = countQuery.eq('saldo', true);
+        countQuery = countQuery.eq('saldo', true).not('omaggio', 'is', true);
       } else if (currentFilters.saldo === 'no') {
         countQuery = countQuery.eq('saldo', false);
       }
@@ -248,7 +228,7 @@ const [columnFilters, setColumnFilters] = useState<{
           .select('id')
           .eq('filtro_non_pagata', 1);
         const ids = (statiNonPagata || []).map(s => s.id);
-        countQuery = countQuery.eq('saldo', false);
+        countQuery = countQuery.eq('saldo', false).not('omaggio', 'is', true).neq('registrazione', 4);
         if (ids.length > 0) {
           countQuery = countQuery.in('registrazione', ids);
         }
@@ -262,17 +242,18 @@ const [columnFilters, setColumnFilters] = useState<{
           toast.error('Sessione scaduta. Effettua nuovamente il login.');
         }
       } else {
-        setTotalRecords(count || 0);
+        if (mia === ultimaRichiesta.current) setTotalRecords(count || 0);
       }
 
       let query = supabase
         .from('varie')
         .select(`
           *,
-          registrazione_info:stati_varie(id, descrizione, colore)
+          registrazione_info:stati_varie(id, descrizione, colore, ordinamento)
         `)
         .eq('user_id', user?.id)
-        .order('registrazione', { ascending: true })
+        .order('registrazione_info(ordinamento)', { ascending: true })
+        .order('stato_modificato_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false });
 
       if (searchParts.length > 0) {
@@ -284,13 +265,13 @@ const [columnFilters, setColumnFilters] = useState<{
       }
 
       if (currentFilters.acconto === 'yes') {
-        query = query.eq('acconto', true);
+        query = query.eq('acconto', true).not('omaggio', 'is', true);
       } else if (currentFilters.acconto === 'no') {
         query = query.eq('acconto', false);
       }
 
       if (currentFilters.saldo === 'yes') {
-        query = query.eq('saldo', true);
+        query = query.eq('saldo', true).not('omaggio', 'is', true);
       } else if (currentFilters.saldo === 'no') {
         query = query.eq('saldo', false);
       }
@@ -305,7 +286,7 @@ const [columnFilters, setColumnFilters] = useState<{
           .select('id')
           .eq('filtro_non_pagata', 1);
         const ids = (statiNonPagata || []).map(s => s.id);
-        query = query.eq('saldo', false);
+        query = query.eq('saldo', false).not('omaggio', 'is', true).neq('registrazione', 4);
         if (ids.length > 0) {
           query = query.in('registrazione', ids);
         }
@@ -349,6 +330,8 @@ const [columnFilters, setColumnFilters] = useState<{
         setTipiIncarico(tipiData || []);
       }
 
+      // una risposta più vecchia non deve sovrascrivere quella dell'ultimo filtro scelto
+      if (mia !== ultimaRichiesta.current) return;
       setVarie(varieData || []);
     } catch (error) {
       console.error('Errore:', error);
@@ -358,6 +341,7 @@ const [columnFilters, setColumnFilters] = useState<{
     }
   };
 
+  const daDashboard = React.useRef(filtroDashboardInUrl());
   useEffect(() => {
     // Aspetta che l'autenticazione sia inizializzata
     const initializeData = async () => {
@@ -370,7 +354,7 @@ const [columnFilters, setColumnFilters] = useState<{
       // Se c'è un user, carica i dati
       if (user?.id) {
         console.log('User autenticato, caricamento dati...');
-        await fetchData();
+        if (!daDashboard.current) await fetchData();
       }
       // Se l'user è null ma lo store ha finito di caricare, significa che non è autenticato
       else if (user === null) {
@@ -404,7 +388,7 @@ const [columnFilters, setColumnFilters] = useState<{
               .select(`
                 *,
                 registrazione_info:stati_varie(id, descrizione, colore)
-              `)
+              `).eq('user_id', user?.id)
               .eq('id', payload.new.id)
               .single();
 
@@ -425,7 +409,7 @@ const [columnFilters, setColumnFilters] = useState<{
               .select(`
                 *,
                 registrazione_info:stati_varie(id, descrizione, colore)
-              `)
+              `).eq('user_id', user?.id)
               .eq('id', payload.new.id)
               .single();
 
@@ -556,7 +540,7 @@ const [columnFilters, setColumnFilters] = useState<{
 
   const handleDuplicateVaria = async (varia: Varie) => {
     try {
-      const { id, created_at, updated_at, progressivo, ...variaData } = varia as Varie & { updated_at?: string; progressivo?: string };
+      const { id, created_at, updated_at, progressivo, registrazione_info, ...variaData } = varia as Varie & { updated_at?: string; progressivo?: string; registrazione_info?: unknown };
       
       const duplicatedData = {
         ...variaData,
@@ -579,6 +563,7 @@ const [columnFilters, setColumnFilters] = useState<{
       }
 
       toast.success('Varia duplicata con successo');
+      fetchData();
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nella duplicazione della varia');
@@ -592,7 +577,7 @@ const [columnFilters, setColumnFilters] = useState<{
 
   const handleRecordsPerPageChange = (newRecordsPerPage: number) => {
     setRecordsPerPage(newRecordsPerPage);
-    localStorage.setItem('varie-records-per-page', newRecordsPerPage.toString());
+    localStorage.setItem('varie-records-per-page-v2', newRecordsPerPage.toString());
     setCurrentPage(1);
     fetchData({
       perPage: newRecordsPerPage,
@@ -604,22 +589,11 @@ const [columnFilters, setColumnFilters] = useState<{
     return Math.ceil(totalRecords / recordsPerPage);
   };
 
-  const handleToggleField = async (varia: Varie, field: 'acconto' | 'saldo' | 'omaggio') => {
+  const handleCiclaPagamento = async (varia: Varie) => {
+    if (varia.omaggio) return;
+    const prossimo = (statoPagamento(varia.acconto, varia.saldo) + 1) % 3;
+    const updateData = { acconto: prossimo >= 1, saldo: prossimo === 2 };
     try {
-      if (field === 'acconto' && varia.saldo) {
-        toast.error('Acconto non disponibile se il saldo è già stato flaggato');
-        return;
-      }
-
-      const newValue = !varia[field];
-
-      const updateData: any = { [field]: newValue };
-      if (field === 'saldo') {
-        if (newValue) {
-          updateData.acconto = true;
-        }
-      }
-
       const { error } = await supabase
         .from('varie')
         .update(updateData)
@@ -627,17 +601,12 @@ const [columnFilters, setColumnFilters] = useState<{
         .eq('user_id', user?.id);
 
       if (error) {
-        toast.error(`Errore nell'aggiornamento del campo ${field}`);
+        toast.error('Errore nell\'aggiornamento del pagamento');
         return;
       }
 
-      setVarie(prev =>
-        prev.map(v =>
-          v.id === varia.id ? { ...v, ...updateData } as Varie : v
-        )
-      );
-
-      toast.success(`Campo ${field} aggiornato con successo`);
+      setVarie(prev => prev.map(v => (v.id === varia.id ? { ...v, ...updateData } as Varie : v)));
+      toast.success(['Pagamento azzerato', 'Acconto segnato', 'Saldo segnato'][prossimo]);
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nell\'aggiornamento');
@@ -683,12 +652,12 @@ const [columnFilters, setColumnFilters] = useState<{
 
   // Funzione per combinare i telefoni
   // Funzione per combinare le proprietà
-  const combineProprieta = (proprieta1: string | null | undefined, proprieta2: string | null | undefined): string => {
+  const combineProprieta = (proprieta1: string | null | undefined, proprieta2: string | null | undefined): React.ReactNode => {
     if (!proprieta1 && !proprieta2) return '-';
     if (!proprieta2) return proprieta1 || '-';
     if (!proprieta1) return proprieta2 || '-';
 
-    return `${proprieta1} / ${proprieta2}`;
+    return <><span className="block">{proprieta1}</span><span className="block">{proprieta2}</span></>;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -720,6 +689,9 @@ const [columnFilters, setColumnFilters] = useState<{
     }));
   };
 
+  const [rubricaFlags, setRubricaFlags] = useState<RubricaFlags>(RUBRICA_DEFAULT);
+  const { chiedi: chiediConfermaRubrica, dialog: dialogRubrica } = useConfermaRubrica();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -728,16 +700,32 @@ const [columnFilters, setColumnFilters] = useState<{
       return;
     }
 
+    const campiMancanti = [
+      !formData.proprieta?.trim() && 'Proprietario 1',
+      !formData.indirizzo?.trim() && 'Indirizzo',
+      !formData.citta?.trim() && 'Città',
+      !formData.registrazione && 'Stato',
+      !formData.tipo_incarico?.trim() && 'Tipo Incarico',
+    ].filter(Boolean);
+    if (campiMancanti.length > 0) {
+      toast.error(`Campi obbligatori mancanti: ${campiMancanti.join(', ')}`);
+      return;
+    }
+
+    const flagsRubrica = await chiediConfermaRubrica(formData, rubricaFlags);
+    if (!flagsRubrica) return;
+    setRubricaFlags(flagsRubrica);
+
     setSubmitting(true);
     try {
-      const dataToSave = {
+      const dataToSave = conMail2({
         ...formData,
         registrazione: formData.registrazione ? parseInt(formData.registrazione) : null,
         tipo_incarico: formData.tipo_incarico.trim() || null,
         proprieta2: formData.proprieta2.trim() || null,
         telefono2: formData.telefono2.trim() || null,
         user_id: user?.id
-      };
+      }, editingVaria?.mail2);
 
       if (editingVaria) {
         const { error } = await supabase
@@ -771,7 +759,7 @@ const [columnFilters, setColumnFilters] = useState<{
           const tipoIncaricoTrovato = tipiIncarico.find(
             t => t.descrizione.toLowerCase() === dataToSave.tipo_incarico!.toLowerCase()
           );
-          if (tipoIncaricoTrovato?.ape) {
+          if (tipoIncaricoTrovato?.ape || conApe(dataToSave.tipo_incarico)) {
             try {
               const { error: apeError } = await supabase
                 .from('ape')
@@ -784,6 +772,7 @@ const [columnFilters, setColumnFilters] = useState<{
                   mail: formData.mail.trim() || null,
                   telefono: formData.telefono.trim() || null,
                   telefono2: formData.telefono2.trim() || null,
+                  ...mail2Opzionale(formData.mail2),
                   note: formData.note.trim() || null,
                   registrazione: 1,
                   progressivo: '',
@@ -805,10 +794,13 @@ const [columnFilters, setColumnFilters] = useState<{
 
       // Sync contatto con rubrica
       await syncRubricaFromPratica(
-        formData.proprieta,
+        flagsRubrica.p1 ? formData.proprieta : null,
         formData.telefono,
         formData.mail,
-        formData.committente
+        formData.committente,
+        flagsRubrica.p2 ? formData.proprieta2 : null,
+        formData.telefono2,
+        formData.mail2
       );
 
       closeModal();
@@ -820,6 +812,20 @@ const [columnFilters, setColumnFilters] = useState<{
       setSubmitting(false);
     }
   };
+
+  useApriDaRicerca<Varie>('varie', (r) => openModal(r));
+  useFiltroDashboard(!!user?.id && !authLoading, ({ stato, incassare, nuovo }) => {
+    if (nuovo) {
+      openModal();
+      return;
+    }
+    const cf = { ...columnFilters, stato };
+    const pf = { ...presetFilters, nonPagate: incassare };
+    setColumnFilters(cf);
+    setPresetFilters(pf);
+    setCurrentPage(1);
+    fetchData({ columnFilters: cf, presetFilters: pf, page: 1 });
+  });
 
   const openModal = (varia?: Varie) => {
     if (varia) {
@@ -833,6 +839,7 @@ const [columnFilters, setColumnFilters] = useState<{
         telefono: varia.telefono || '',
         telefono2: varia.telefono2 || '',
         mail: varia.mail || '',
+        mail2: varia.mail2 || '',
         registrazione: varia.registrazione?.toString() || '',
         tipo_incarico: varia.tipo_incarico || '',
         acconto: varia.acconto,
@@ -851,6 +858,7 @@ const [columnFilters, setColumnFilters] = useState<{
         telefono: '',
         telefono2: '',
         mail: '',
+        mail2: '',
         registrazione: '',
         tipo_incarico: '',
         acconto: false,
@@ -874,6 +882,7 @@ const [columnFilters, setColumnFilters] = useState<{
       telefono: '',
       telefono2: '',
       mail: '',
+      mail2: '',
       registrazione: '',
       tipo_incarico: '',
       acconto: false,
@@ -901,25 +910,6 @@ const [columnFilters, setColumnFilters] = useState<{
   const getStatoBackgroundColor = (stato: StatoVarie | undefined) => {
     if (!stato || !stato.colore) return '#6b7280';
     return stato.colore;
-  };
-
-  const renderToggleButton = (value: boolean, enabled: boolean = true) => {
-    return (
-      <div
-        className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-150 ${enabled ? 'hover:scale-105' : ''
-          } ${value
-            ? 'bg-topo-100 hover:bg-topo-200'
-            : 'bg-ink-100 hover:bg-ink-200'
-          } ${!enabled ? 'opacity-70 cursor-not-allowed border-2 border-dashed border-ink-300' : ''
-          }`}
-      >
-        {value ? (
-          <Check className="w-4 h-4 text-topo-600" />
-        ) : (
-          <X className="w-4 h-4 text-ink-400" />
-        )}
-      </div>
-    );
   };
 
   return (
@@ -1002,7 +992,7 @@ const [columnFilters, setColumnFilters] = useState<{
       {/* Tabella */}
       <div className="card card-flush p-0 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
         <div className="overflow-x-auto h-full overflow-y-auto">
-          <table className="w-full" style={{ minHeight: '400px' }}>
+          <table className="w-full tabella-distesa" style={{ minHeight: '400px' }}>
             <thead className="table-header">
               <tr>
                 <th className="table-cell text-left">Stato</th>
@@ -1012,8 +1002,7 @@ const [columnFilters, setColumnFilters] = useState<{
                 <th className="table-cell text-left">Città</th>
                 <th className="table-cell text-left">Indirizzo</th>
                 <th className="table-cell text-left">Note</th>
-                <th className="table-cell text-center">Acconto</th>
-                <th className="table-cell text-center">Saldo</th>
+                <th className="table-cell text-center">Pagamento</th>
               </tr>
               {/* Riga filtri inline */}
               <tr className="bg-ink-100 border-b border-ink-200">
@@ -1185,15 +1174,21 @@ const [columnFilters, setColumnFilters] = useState<{
                   </div>
                 </td>
                 <td className="px-2 py-1.5 text-center">
-                  <TriStateFilter
-                    value={columnFilters.acconto || 'all'}
-                    onChange={(v) => handleApplyFilter({ acconto: v })}
-                  />
-                </td>
-                <td className="px-2 py-1.5 text-center">
-                  <TriStateFilter
-                    value={columnFilters.saldo || 'all'}
-                    onChange={(v) => handleApplyFilter({ saldo: v })}
+                  <FiltroSelect
+                    value={columnFilters.saldo === 'yes' ? 'saldato' : columnFilters.acconto === 'yes' ? 'acconto' : columnFilters.acconto === 'no' ? 'da_pagare' : 'all'}
+                    onChange={(v) => handleApplyFilter(
+                      v === 'saldato' ? { acconto: 'all', saldo: 'yes' }
+                        : v === 'acconto' ? { acconto: 'yes', saldo: 'no' }
+                        : v === 'da_pagare' ? { acconto: 'no', saldo: 'no' }
+                        : { acconto: 'all', saldo: 'all' }
+                    )}
+                    options={[
+                      { value: 'all', label: 'Tutti' },
+                      { value: 'da_pagare', label: 'Da pagare' },
+                      { value: 'acconto', label: 'Acconto' },
+                      { value: 'saldato', label: 'Saldato' },
+                    ]}
+                    testId="varie-filtro-pagamento-select"
                   />
                 </td>
               </tr>
@@ -1201,7 +1196,7 @@ const [columnFilters, setColumnFilters] = useState<{
             <tbody className="bg-white divide-y divide-ink-100">
               {loading || authLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-ink-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-ink-500">
                     <div className="flex items-center justify-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-signal-500"></div>
                       <span className="ml-2">
@@ -1212,13 +1207,13 @@ const [columnFilters, setColumnFilters] = useState<{
                 </tr>
               ) : varie.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-ink-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-ink-500">
                     Nessuna varia trovata
                   </td>
                 </tr>
               ) : (
                 varie.map((varia) => (
-                  <tr key={varia.id} className="table-row hover:bg-ink-50" onContextMenu={(e) => handleContextMenu(e, varia)}>
+                  <tr key={varia.id} className="table-row cursor-pointer hover:bg-ink-50" onContextMenu={(e) => handleContextMenu(e, varia)} onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest('button, a, input, select, textarea')) openModal(varia); }} title="Doppio clic per modificare" data-testid={`riga-varia-${varia.id}`}>
                     <td className="table-cell">
                       <span
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(varia.registrazione_info)}`}
@@ -1227,31 +1222,19 @@ const [columnFilters, setColumnFilters] = useState<{
                         {varia.registrazione_info?.descrizione || 'N/A'}
                       </span>
                     </td>
-                    <td className="table-cell font-medium text-ink-700">{varia.committente}</td>
+                    <td className="table-cell text-ink-600">{varia.committente}</td>
                     <td className="table-cell text-ink-600">{combineProprieta(varia.proprieta, varia.proprieta2)}</td>
                     <td className="table-cell text-ink-600">{varia.tipo_incarico || '-'}</td>
                     <td className="table-cell text-ink-600 max-w-xs truncate">{varia.citta || '-'}</td>
                     <td className="table-cell text-ink-600 max-w-xs truncate">{varia.indirizzo || '-'}</td>
                     <td className="table-cell text-ink-600 max-w-xs truncate">{varia.note || '-'}</td>
                     <td className="table-cell text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleField(varia, 'acconto')}
-                        className="transition-colors cursor-pointer"
-                        title="Clicca per cambiare stato"
-                      >
-                        {renderToggleButton(varia.acconto, varia.saldo !== true)}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleField(varia, 'saldo')}
-                        className="transition-colors cursor-pointer"
-                        title="Clicca per cambiare stato"
-                      >
-                        {renderToggleButton(varia.saldo)}
-                      </button>
+                      <PagamentoToggle
+                        stato={statoPagamento(varia.acconto, varia.saldo)}
+                        omaggio={varia.omaggio}
+                        onClick={() => handleCiclaPagamento(varia)}
+                        testId={`varie-pagamento-${varia.id}`}
+                      />
                     </td>
                   </tr>
                 ))
@@ -1280,6 +1263,8 @@ const [columnFilters, setColumnFilters] = useState<{
                     <option value={50}>50</option>
                     <option value={100}>100</option>
                     <option value={200}>200</option>
+                    <option value={500}>500</option>
+                    <option value={1000}>1000</option>
                   </select>
                 </div>
 
@@ -1356,7 +1341,10 @@ const [columnFilters, setColumnFilters] = useState<{
         )}
       </div>
 
+      </div>
+
       {/* Modal */}
+      {dialogRubrica}
       {showModal && (
         <div className="modal-overlay">
           <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1374,81 +1362,51 @@ const [columnFilters, setColumnFilters] = useState<{
             </div>
 
             <form onSubmit={handleSubmit} className="p-6">
+              <ContattiPratica
+                className="mb-6"
+                valori={formData}
+                onInputChange={handleInputChange}
+                onPatch={(patch) => setFormData(prev => ({ ...prev, ...patch }))}
+                rubrica={rubricaFlags}
+                onRubricaChange={setRubricaFlags}
+              />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Committente *
                     </label>
-                    <input
-                      type="text"
-                      name="committente"
+                    <CommittenteSelect
                       value={formData.committente}
-                      onChange={handleInputChange}
-                      placeholder="Nome committente"
-                      className="input w-full"
-                      required
+                      onChange={(v) => setFormData((prev) => ({ ...prev, committente: v }))}
+                      testId="varie-committente-input"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Proprietario
+                      Indirizzo *
                     </label>
-                    <RubricaAutocomplete
-                      value={formData.proprieta}
-                      onChange={(val) => setFormData(prev => ({ ...prev, proprieta: val }))}
-                      onSelect={(contatto: Rubrica) => {
-                        setFormData(prev => ({
-                          ...prev,
-                          proprieta: contatto.nominativo,
-                          telefono: contatto.telefono || '',
-                          mail: contatto.email || ''
-                        }));
-                      }}
-                      placeholder="Nome proprietario"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Proprietario 2
-                    </label>
-                    <input
-                      type="text"
-                      name="proprieta2"
-                      value={formData.proprieta2}
-                      onChange={handleInputChange}
-                      placeholder="Nome secondo proprietario"
-                      className="input w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Indirizzo
-                    </label>
-                    <input
-                      type="text"
-                      name="indirizzo"
+                    <CommittenteSelect
+                      campo="indirizzo"
                       value={formData.indirizzo}
-                      onChange={handleInputChange}
+                      onChange={(v) => setFormData((prev) => ({ ...prev, indirizzo: v }))}
+                      onCitta={(c) => setFormData((prev) => ({ ...prev, citta: c }))}
+                      testId="varie-indirizzo-input"
                       placeholder="Indirizzo"
-                      className="input w-full"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Città
+                      Città *
                     </label>
-                    <input
-                      type="text"
-                      name="citta"
+                    <CommittenteSelect
+                      campo="citta"
                       value={formData.citta}
-                      onChange={handleInputChange}
+                      onChange={(v) => setFormData((prev) => ({ ...prev, citta: v }))}
+                      testId="varie-citta-input"
                       placeholder="Città"
-                      className="input w-full"
                     />
                   </div>
 
@@ -1471,55 +1429,15 @@ const [columnFilters, setColumnFilters] = useState<{
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Telefono
-                    </label>
-                    <input
-                      type="tel"
-                      name="telefono"
-                      value={formData.telefono}
-                      onChange={handleInputChange}
-                      placeholder="XXX XXX XXXX"
-                      className="input w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Telefono 2
-                    </label>
-                    <input
-                      type="tel"
-                      name="telefono2"
-                      value={formData.telefono2}
-                      onChange={handleInputChange}
-                      placeholder="XXX XXX XXXX"
-                      className="input w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      name="mail"
-                      value={formData.mail}
-                      onChange={handleInputChange}
-                      placeholder="Indirizzo email"
-                      className="input w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Stato
+                      Stato *
                     </label>
                     <div className="relative">
                       <select
                         name="registrazione"
                         value={formData.registrazione}
                         onChange={handleInputChange}
+                        required
+                        data-testid="varie-stato-select"
                         className="input w-full pr-8 appearance-none"
                       >
                         <option value="">-- Seleziona stato --</option>
@@ -1535,16 +1453,27 @@ const [columnFilters, setColumnFilters] = useState<{
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Tipo Incarico
+                      Tipo Incarico *
                     </label>
-                    <input
-                      type="text"
-                      name="tipo_incarico"
-                      value={formData.tipo_incarico}
-                      onChange={handleInputChange}
-                      placeholder="Tipo di incarico"
-                      className="input w-full"
-                    />
+                    <div className="relative">
+                      <select
+                        name="tipo_incarico"
+                        required
+                        data-testid="varie-tipo-incarico-input"
+                        value={formData.tipo_incarico}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, tipo_incarico: e.target.value }))}
+                        className="input w-full appearance-none pr-8"
+                      >
+                        <option value="">Seleziona tipo incarico</option>
+                        {formData.tipo_incarico && !TIPI_INCARICO_VARIE.includes(formData.tipo_incarico) && (
+                          <option value={formData.tipo_incarico}>{formData.tipo_incarico}</option>
+                        )}
+                        {TIPI_INCARICO_VARIE.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    </div>
                   </div>
 
                   <div>
@@ -1668,20 +1597,6 @@ const [columnFilters, setColumnFilters] = useState<{
       {contextMenu.varia && (
         <ContextMenu x={contextMenu.x} y={contextMenu.y}>
           <button
-            onClick={() => handleContextMenuAction('edit', contextMenu.varia!)}
-            className="context-menu-item"
-          >
-            <Edit className="w-4 h-4 text-signal-500" />
-            Modifica
-          </button>
-          <button
-            onClick={() => handleContextMenuAction('status', contextMenu.varia!)}
-            className="context-menu-item"
-          >
-            <ArrowRightCircle className="w-4 h-4 text-warning-500" />
-            Cambia stato
-          </button>
-          <button
             onClick={() => handleContextMenuAction('contact', contextMenu.varia!)}
             className="context-menu-item"
           >
@@ -1752,47 +1667,8 @@ const [columnFilters, setColumnFilters] = useState<{
 
       {/* Modal Contatto da Menu Contestuale */}
       {showContextMenuActionModal === 'contatto' && selectedVariaForContextMenu && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Contatto - {selectedVariaForContextMenu.committente}
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Proprietario</label>
-                <p className="text-gray-900">{selectedVariaForContextMenu.proprieta || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Telefono</label>
-                <p className="text-gray-900">{selectedVariaForContextMenu.telefono || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <p className="text-gray-900">{selectedVariaForContextMenu.mail || '-'}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Indirizzo</label>
-                <p className="text-gray-900">
-                  {selectedVariaForContextMenu.indirizzo || '-'}{selectedVariaForContextMenu.citta ? `, ${selectedVariaForContextMenu.citta}` : ''}
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 mt-6">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowContextMenuActionModal(null);
-                  setSelectedVariaForContextMenu(null);
-                }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-              >
-                Chiudi
-              </button>
-            </div>
-          </div>
-        </div>
+        <ContattiPraticaModal pratica={selectedVariaForContextMenu} onClose={() => { setShowContextMenuActionModal(null); setSelectedVariaForContextMenu(null); }} />
       )}
     </div>
-  </div>
   );
 }; 

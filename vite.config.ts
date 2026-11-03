@@ -10,6 +10,10 @@ export default defineConfig({
       port: 443,
     },
   },
+  esbuild: {
+    pure: ['console.log', 'console.debug'],
+    drop: ['debugger'],
+  },
   build: {
     rollupOptions: {
       output: {

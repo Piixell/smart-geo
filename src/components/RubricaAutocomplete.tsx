@@ -1,3 +1,4 @@
+import { richiediIdUtente } from '../services/utente';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, User } from 'lucide-react';
 import { supabase } from '../services/supabase';
@@ -33,10 +34,11 @@ export const RubricaAutocomplete: React.FC<RubricaAutocompleteProps> = ({
     }
 
     try {
+      const userId = await richiediIdUtente();
       setLoading(true);
       const { data, error } = await supabase
         .from('rubrica')
-        .select('*')
+        .select('*').eq('user_id', userId)
         .ilike('nominativo', `%${term}%`)
         .eq('disattivato', false)
         .order('nominativo', { ascending: true })
@@ -152,6 +154,7 @@ export const RubricaAutocomplete: React.FC<RubricaAutocompleteProps> = ({
             }
           }}
           onKeyDown={handleKeyDown}
+          onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
           placeholder={placeholder}
           className={`input w-full pl-10 ${className}`}
           autoComplete="off"

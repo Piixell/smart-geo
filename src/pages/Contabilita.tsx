@@ -5,9 +5,13 @@ import { useAuthStore } from '../store/authStore';
 import { ContextMenu } from '../components/ContextMenu';
 import type { Fattura } from '../types';
 import toast from 'react-hot-toast';
+import { sincronizzaTasseInSpese } from '../utils/tasseSync';
+import { aliquotaTasse, coefficienteRedditivita, quotaCassa } from '../utils/aliquotaTasse';
+import { cfg } from '../services/impostazioni';
 
 export const Contabilita: React.FC = () => {
  const [fatture, setFatture] = useState<Fattura[]>([]);
+ const [tutteFatture, setTutteFatture] = useState<Fattura[]>([]);
  const [loading, setLoading] = useState(true);
  const [filtroMese, setFiltroMese] = useState('');
  const [filtroAnno, setFiltroAnno] = useState(() => new Date().getFullYear().toString());
@@ -18,8 +22,8 @@ export const Contabilita: React.FC = () => {
  // Paginazione
  const [currentPage, setCurrentPage] = useState(1);
  const [recordsPerPage, setRecordsPerPage] = useState(() => {
- const saved = localStorage.getItem('contabilita_records_per_page');
- return saved ? parseInt(saved) : 10;
+ const saved = localStorage.getItem('contabilita_records_per_page_v2');
+ return saved ? parseInt(saved) : 300;
  });
  const [totalRecords, setTotalRecords] = useState(0);
  
@@ -56,14 +60,14 @@ export const Contabilita: React.FC = () => {
  guadagnoNetto: 0,
  fatturaPerDetrazione: false
  });
- const [parametroTasse, setParametroTasse] = useState<number>(0.22); // Default 22%
+ const [parametroTasse, setParametroTasse] = useState<number>(aliquotaTasse(new Date().getFullYear()));
  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; fattura: Fattura | null }>({ x: 0, y: 0, fattura: null });
 
   // Genera lista anni dal database (solo anni con fatture)
  const [anni, setAnni] = useState<number[]>([]);
 
  // Opzioni records per pagina
- const recordsPerPageOptions = [5, 10, 25, 50, 100];
+ const recordsPerPageOptions = [10, 25, 50, 100, 300, 500];
 
  const fetchAnniDisponibili = async () => {
  try {
@@ -150,6 +154,7 @@ export const Contabilita: React.FC = () => {
  const paginatedData = sortedData.slice(start, end);
 
  setFatture(paginatedData);
+setTutteFatture(sortedData);
  setTotalRecords(count || 0);
  
  // Calcola i totali (su tutti i dati filtrati, non solo la pagina corrente)
@@ -171,6 +176,10 @@ export const Contabilita: React.FC = () => {
  guadagnoNetto: totaleGuadagnoNetto
  });
 
+ if (user?.id) {
+ sincronizzaTasseInSpese(user.id).catch((err) => console.error('Errore sync tasse in spese:', err));
+ }
+
  } catch (error) {
  console.error('Errore:', error);
  toast.error('Errore nel caricamento dei dati');
@@ -181,7 +190,7 @@ export const Contabilita: React.FC = () => {
 
  const loadParametriTasse = async () => {
  try {
- const { data, error } = await supabase
+ const { error } = await supabase
  .from('parametri_fatturazione')
  .select('*')
  .eq('user_id', user?.id)
@@ -193,11 +202,7 @@ export const Contabilita: React.FC = () => {
  return;
  }
 
- if (data) {
- setParametroTasse(data.percentuale / 100); // Converte da percentuale a decimale
- } else {
- setParametroTasse(0.22); // Default 22% se non esistono parametri
- }
+ setParametroTasse(aliquotaTasse(formData.anno));
  } catch (error) {
  console.error('Errore:', error);
  }
@@ -214,11 +219,11 @@ export const Contabilita: React.FC = () => {
 
  if (error && error.code !== 'PGRST116') {
  console.error('Errore caricamento parametri:', error);
- return 0.22; // Default in caso di errore
+ return aliquotaTasse(formData.anno);
  }
 
  if (data) {
- return data.percentuale / 100; // Converte da percentuale a decimale
+ return aliquotaTasse(formData.anno);
  } else {
  // Crea i parametri solo quando si salva la fattura
  const { error: insertError } = await supabase
@@ -226,20 +231,19 @@ export const Contabilita: React.FC = () => {
  .insert({
  user_id: user?.id,
  anno: formData.anno,
- percentuale: 22.00
+ percentuale: aliquotaTasse(formData.anno) * 100
  });
 
  if (insertError) {
  console.error('Errore nella creazione dei parametri:', insertError);
- return 0.22; // Default in caso di errore
+ return aliquotaTasse(formData.anno);
  }
 
- toast.success(`Parametri tasse creati per l'anno ${formData.anno} (22%)`);
- return 0.22; // 22% default
+ return aliquotaTasse(formData.anno);
  }
  } catch (error) {
  console.error('Errore:', error);
- return 0.22; // Default in caso di errore
+ return aliquotaTasse(formData.anno);
  }
  };
 
@@ -331,20 +335,20 @@ export const Contabilita: React.FC = () => {
  const handleRecordsPerPageChange = (newValue: number) => {
  setRecordsPerPage(newValue);
  setCurrentPage(1);
- localStorage.setItem('contabilita_records_per_page', newValue.toString());
+ localStorage.setItem('contabilita_records_per_page_v2', newValue.toString());
  };
 
  // Calcoli automatici
  const calculateValues = (onorario: number | string, spese: number | string) => {
  const onorarioNum = parseFloat(onorario as string) || 0;
  const speseNum = parseFloat(spese as string) || 0;
- const cassaGeometri = onorarioNum * 0.05; // 5% dell'onorario
+ const cassaGeometri = onorarioNum * quotaCassa();
  
- // Bolli: 2€ solo se fatturato > 77,47€
+ // Bolli: importo e soglia da Parametri
  const fatturatoBase = onorarioNum + speseNum + cassaGeometri;
- const bolli = fatturatoBase > 77.47 ? 2.00 : 0;
+ const bolli = fatturatoBase > cfg().fisco.bolloSoglia ? cfg().fisco.bolloImporto : 0;
  
- const tasse = (onorarioNum + bolli) * 0.78 * parametroTasse;
+ const tasse = (onorarioNum + bolli) * coefficienteRedditivita() * aliquotaTasse(Number(formData.anno));
  const fatturato = onorarioNum + speseNum + bolli + cassaGeometri;
  const guadagnoNetto = fatturato - tasse - cassaGeometri - bolli - speseNum;
 
@@ -361,13 +365,13 @@ export const Contabilita: React.FC = () => {
  const calculateValuesWithPercent = (onorario: number | string, spese: number | string, percentuale: number) => {
  const onorarioNum = parseFloat(onorario as string) || 0;
  const speseNum = parseFloat(spese as string) || 0;
- const cassaGeometri = onorarioNum * 0.05; // 5% dell'onorario
+ const cassaGeometri = onorarioNum * quotaCassa();
  
- // Bolli: 2€ solo se fatturato > 77,47€
+ // Bolli: importo e soglia da Parametri
  const fatturatoBase = onorarioNum + speseNum + cassaGeometri;
- const bolli = fatturatoBase > 77.47 ? 2.00 : 0;
+ const bolli = fatturatoBase > cfg().fisco.bolloSoglia ? cfg().fisco.bolloImporto : 0;
  
- const tasse = (onorarioNum + bolli) * 0.78 * percentuale;
+ const tasse = (onorarioNum + bolli) * coefficienteRedditivita() * percentuale;
  const fatturato = onorarioNum + speseNum + bolli + cassaGeometri;
  const guadagnoNetto = fatturato - tasse - cassaGeometri - bolli - speseNum;
 
@@ -395,7 +399,9 @@ export const Contabilita: React.FC = () => {
 
  // Se cambia l'anno, ricarica i parametri delle tasse
  if (field === 'anno') {
- setTimeout(() => loadParametriTasse(), 0); // Esegui dopo l'aggiornamento dello state
+ const nuovaAliquota = aliquotaTasse(Number(value));
+ setParametroTasse(nuovaAliquota);
+ Object.assign(newFormData, calculateValuesWithPercent(newFormData.onorario, newFormData.spese, nuovaAliquota));
  }
 
  setFormData(newFormData);
@@ -452,17 +458,12 @@ export const Contabilita: React.FC = () => {
  const calculatedValues = calculateValuesWithPercent(formData.onorario, formData.spese, percentualeTasse);
  setFormData(prev => ({ ...prev, ...calculatedValues }));
 
- // Determina il numero fattura: usa quello inserito dall'utente se presente, altrimenti auto-genera
+ // Nuova fattura: numero sempre automatico; in modifica resta quello della fattura
  const isEditing = !!editingId;
- const userInsertedNumber = formData.numeroFattura ? formData.numeroFattura.toString() : null;
  let numeroFattura: string;
 
  if (isEditing) {
  numeroFattura = formData.numeroFattura.toString();
- console.log('[DEBUG FATTURA] Modifica - Numero:', numeroFattura, 'Anno:', formData.anno);
- } else if (userInsertedNumber) {
- numeroFattura = userInsertedNumber;
- console.log('[DEBUG FATTURA] Inserimento manuale - Numero:', numeroFattura, 'Anno:', formData.anno);
  } else {
  const autoNumber = await getNextNumeroFattura(formData.anno);
  numeroFattura = autoNumber.toString();
@@ -481,11 +482,11 @@ export const Contabilita: React.FC = () => {
  anno_fattura: formData.anno,
  onorario: formData.onorario ? parseFloat(formData.onorario as string) : null,
  spese: formData.spese ? parseFloat(formData.spese as string) : null,
- bolli: formData.bolli,
- cassa_geometri: formData.cassaGeometri,
- tasse: formData.tasse,
- fatturato: formData.fatturato,
- guadagno_netto: formData.guadagnoNetto,
+ bolli: calculatedValues.bolli,
+ cassa_geometri: calculatedValues.cassaGeometri,
+ tasse: calculatedValues.tasse,
+ fatturato: calculatedValues.fatturato,
+ guadagno_netto: calculatedValues.guadagnoNetto,
  fattura_per_detrazione: formData.fatturaPerDetrazione,
  data_modifica: new Date().toISOString()
  })
@@ -511,11 +512,11 @@ export const Contabilita: React.FC = () => {
  anno_fattura: formData.anno,
  onorario: formData.onorario ? parseFloat(formData.onorario as string) : null,
  spese: formData.spese ? parseFloat(formData.spese as string) : null,
- bolli: formData.bolli,
- cassa_geometri: formData.cassaGeometri,
- tasse: formData.tasse,
- fatturato: formData.fatturato,
- guadagno_netto: formData.guadagnoNetto,
+ bolli: calculatedValues.bolli,
+ cassa_geometri: calculatedValues.cassaGeometri,
+ tasse: calculatedValues.tasse,
+ fatturato: calculatedValues.fatturato,
+ guadagno_netto: calculatedValues.guadagnoNetto,
  fattura_per_detrazione: formData.fatturaPerDetrazione,
  data_creazione: new Date().toISOString(),
  data_modifica: new Date().toISOString()
@@ -719,9 +720,9 @@ export const Contabilita: React.FC = () => {
 
  {/* Tabella Fatture */}
  <div className="card p-0 overflow-hidden">
- <div className="overflow-x-auto">
- <table className="w-full">
- <thead className="bg-ink-50 border-b border-ink-200">
+ <div className="overflow-auto max-h-[calc(100vh-21rem)] min-h-[16rem]" data-testid="fatture-scroll">
+ <table className="w-full tabella-mobile">
+ <thead className="sticky top-0 z-10 bg-ink-50 border-b border-ink-200">
  <tr>
  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
  Mese
@@ -775,7 +776,7 @@ export const Contabilita: React.FC = () => {
  (() => {
  // Calcola totali per ogni mese
  const monthlyTotals: Record<string, { onorario: number; spese: number; cassaGeometri: number; bolli: number; tasse: number; fatturato: number; guadagnoNetto: number; count: number }> = {};
- fatture.forEach(f => {
+ tutteFatture.forEach(f => {
  const key = `${f.mese_fattura}-${f.anno_fattura}`;
  if (!monthlyTotals[key]) {
  monthlyTotals[key] = { onorario: 0, spese: 0, cassaGeometri: 0, bolli: 0, tasse: 0, fatturato: 0, guadagnoNetto: 0, count: 0 };
@@ -857,32 +858,32 @@ export const Contabilita: React.FC = () => {
  </tr>
 {/* Riga totali mensili */}
           {isLastInMonth && (
-             <tr className="bg-ink-100 border-t border-ink-300">
-              <td className="px-6 py-3 text-sm font-bold text-ink-900" colSpan={2}>
+             <tr className="bg-signal-100 dark:bg-[#2A2A2A] border-t-2 border-b-2 border-signal-300 " data-testid={`totale-mese-${fattura.mese_fattura}-${fattura.anno_fattura}`}>
+              <td className="px-6 py-3.5 text-sm font-bold uppercase tracking-wide text-signal-800 dark:text-white border-l-4 border-signal-500" colSpan={2}>
                 Totale {fattura.mese_fattura} {fattura.anno_fattura}
               </td>
-              <td className="px-6 py-3 text-xs text-ink-600">
+              <td className="px-6 py-3.5 text-xs font-medium text-signal-700 ">
                 {mTotals.count} {mTotals.count === 1 ? 'fattura' : 'fatture'}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-ink-900">
+              <td className="px-6 py-3.5 text-sm font-bold text-signal-900 dark:text-white">
                 {formatCurrency(mTotals.onorario)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-ink-900">
+              <td className="px-6 py-3.5 text-sm font-bold text-signal-900 dark:text-white">
                 {formatCurrency(mTotals.spese)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-ink-900">
+              <td className="px-6 py-3.5 text-sm font-bold text-signal-900 dark:text-white">
                 {formatCurrency(mTotals.cassaGeometri)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-ink-900">
+              <td className="px-6 py-3.5 text-sm font-bold text-signal-900 dark:text-white">
                 {formatCurrency(mTotals.bolli)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-ink-900">
+              <td className="px-6 py-3.5 text-sm font-bold text-signal-900 dark:text-white">
                 {formatCurrency(mTotals.fatturato)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-ink-900">
+              <td className="px-6 py-3.5 text-sm font-bold text-signal-900 dark:text-white">
                 {formatCurrency(mTotals.tasse)}
               </td>
-              <td className="px-6 py-3 text-sm font-bold text-ink-900">
+              <td className="px-6 py-3.5 text-sm font-bold text-signal-900 dark:text-white">
                 {formatCurrency(mTotals.guadagnoNetto)}
               </td>
             </tr>
@@ -896,32 +897,30 @@ export const Contabilita: React.FC = () => {
  </tbody>
  {/* Totalizzatore */}
  {fatture.length > 0 && (
-  <tfoot className="bg-ink-200 border-t-2 border-ink-300">
+  <tfoot className="sticky bottom-0 z-10 bg-signal-200  border-t-2 border-signal-400 shadow-[0_-2px_6px_rgba(0,0,0,0.08)]" data-testid="totale-anno-row">
  <tr>
- <td className="px-6 py-4 text-sm font-bold text-ink-900">
- TOTALI
+ <td className="px-6 py-4 text-[15px] font-bold [-webkit-text-stroke:0.5px_currentColor] uppercase tracking-wide text-signal-900 dark:text-white border-l-4 border-signal-600" colSpan={3}>
+ {filtroAnno ? `Totale anno ${filtroAnno}` : 'Totale complessivo'}
  </td>
- <td className="px-6 py-4"></td>
- <td className="px-6 py-4"></td>
- <td className="px-6 py-4 text-sm font-bold text-ink-900">
+ <td className="px-6 py-4 text-[15px] font-bold [-webkit-text-stroke:0.5px_currentColor] text-signal-900 dark:text-white">
  {formatCurrency(totals.onorario)}
  </td>
- <td className="px-6 py-4 text-sm font-bold text-ink-900">
+ <td className="px-6 py-4 text-[15px] font-bold [-webkit-text-stroke:0.5px_currentColor] text-signal-900 dark:text-white">
  {formatCurrency(totals.spese)}
  </td>
- <td className="px-6 py-4 text-sm font-bold text-ink-900">
+ <td className="px-6 py-4 text-[15px] font-bold [-webkit-text-stroke:0.5px_currentColor] text-signal-900 dark:text-white">
  {formatCurrency(totals.cassaGeometri)}
  </td>
- <td className="px-6 py-4 text-sm font-bold text-ink-900">
+ <td className="px-6 py-4 text-[15px] font-bold [-webkit-text-stroke:0.5px_currentColor] text-signal-900 dark:text-white">
  {formatCurrency(totals.bolli)}
  </td>
-<td className="px-6 py-4 text-sm font-bold text-blue-700 dark:text-blue-400">
+<td className="px-6 py-4 text-[15px] font-bold [-webkit-text-stroke:0.5px_currentColor] text-signal-900 dark:text-white">
               {formatCurrency(totals.fatturato)}
   </td>
-<td className="px-6 py-4 text-sm font-bold text-red-700 dark:text-red-400">
+<td className="px-6 py-4 text-[15px] font-bold [-webkit-text-stroke:0.5px_currentColor] text-signal-900 dark:text-white">
               {formatCurrency(totals.tasse)}
   </td>
-<td className="px-6 py-4 text-sm font-bold text-green-700 dark:text-green-400">
+<td className="px-6 py-4 text-[15px] font-bold [-webkit-text-stroke:0.5px_currentColor] text-signal-900 dark:text-white">
               {formatCurrency(totals.guadagnoNetto)}
  </td>
  </tr>
@@ -993,10 +992,12 @@ export const Contabilita: React.FC = () => {
  </label>
  <input
  type="text"
- value={formData.numeroFattura}
+ value={editingId ? formData.numeroFattura : ''}
  onChange={(e) => handleFormChange('numeroFattura', e.target.value)}
- placeholder="Numero generato automaticamente al salvataggio"
- className="input"
+ placeholder="Assegnato automaticamente al salvataggio"
+ readOnly={!editingId}
+ className={`input ${editingId ? '' : 'cursor-not-allowed bg-ink-50 text-ink-400'}`}
+ data-testid="fattura-numero"
  />
  </div>
 
@@ -1057,7 +1058,7 @@ export const Contabilita: React.FC = () => {
  className="input bg-ink-50"
  readOnly
  />
- <p className="text-xs text-ink-500 mt-1">2,00€ se fatturato {'>'} 77,47€</p>
+ <p className="text-xs text-ink-500 mt-1">{cfg().fisco.bolloImporto.toLocaleString('it-IT', { minimumFractionDigits: 2 })}€ se fatturato {'>'} {cfg().fisco.bolloSoglia.toLocaleString('it-IT', { minimumFractionDigits: 2 })}€</p>
  </div>
 
  {/* Tasse */}
@@ -1073,7 +1074,7 @@ export const Contabilita: React.FC = () => {
  readOnly
  />
  <p className="text-xs text-ink-500 mt-1">
- (Onorario + bolli) × 0,78 × {(parametroTasse * 100).toFixed(0)}%
+ (Onorario + bolli) × {(coefficienteRedditivita() * 100).toLocaleString('it-IT')}% × {(aliquotaTasse(Number(formData.anno)) * 100).toFixed(0)}%
  </p>
  </div>
 

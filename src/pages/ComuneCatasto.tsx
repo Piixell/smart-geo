@@ -1,52 +1,39 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, ChevronDown, Edit, Trash2, Check, X, Copy, ArrowRightCircle, User, Search } from 'lucide-react';
+import { useApriDaRicerca } from '../hooks/useApriDaRicerca';
+import { useFiltroDashboard, filtroDashboardInUrl } from '../hooks/useFiltroDashboard';
+import { Plus, ChevronDown, Trash2, Check, X, Copy, User, Search } from 'lucide-react';
+import { CommittenteSelect } from '../components/CommittenteSelect';
+import { PagamentoToggle, statoPagamento } from '../components/PagamentoToggle';
 import { supabase } from '../services/supabase';
+import { cfg } from '../services/impostazioni';
 import { useAuthStore } from '../store/authStore';
-import { RubricaAutocomplete } from '../components/RubricaAutocomplete';
 import { syncRubricaFromPratica } from '../utils/rubricaSync';
+import { conMail2, mail2Opzionale } from '../utils/mail2';
+import { ContattiPratica, RUBRICA_DEFAULT, type RubricaFlags } from '../components/ContattiPratica';
+import { useConfermaRubrica } from '../components/ConfermaRubrica';
 import { ContextMenu } from '../components/ContextMenu';
-import type { ComuneCatasto, StatoGenerale, TipoIncarico, TipoPratica, Rubrica } from '../types';
+import type { ComuneCatasto, StatoGenerale, TipoIncarico, TipoPratica } from '../types';
 import toast from 'react-hot-toast';
+import { ContattiPraticaModal } from '../components/ContattiPraticaModal';
 
-const TriStateFilter = ({ value, onChange }: {
+const TriStateFilter = ({ value, onChange, testId }: {
   value: 'all' | 'yes' | 'no';
   onChange: (v: 'all' | 'yes' | 'no') => void;
+  testId: string;
 }) => (
-  <div className="flex items-center justify-center gap-0.5">
-    <button
-      onClick={() => onChange('all')}
-      title="Tutti"
-      className={`p-1 rounded-md transition-all duration-150 ${
-        value === 'all'
-          ? 'bg-ink-200 shadow-sm'
-          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
-      }`}
+  <div className="relative">
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as 'all' | 'yes' | 'no')}
+      className="w-full min-w-[100px] text-xs pl-1.5 py-1.5 border border-ink-300 rounded-md bg-white text-ink-700 appearance-none pr-5 focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500"
+      data-testid={testId}
     >
-      <div className="w-2.5 h-0.5 bg-ink-400 rounded" />
-    </button>
-    <button
-      onClick={() => onChange('yes')}
-      title="Si"
-      className={`p-1 rounded-md transition-all duration-150 ${
-        value === 'yes'
-          ? 'bg-ink-200 shadow-sm'
-          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
-      }`}
-    >
-      <Check className="w-3 h-3 text-topo-500" />
-    </button>
-    <button
-      onClick={() => onChange('no')}
-      title="No"
-      className={`p-1 rounded-md transition-all duration-150 ${
-        value === 'no'
-          ? 'bg-ink-200 shadow-sm'
-          : 'hover:bg-ink-100 opacity-50 hover:opacity-100'
-      }`}
-    >
-      <X className="w-3 h-3 text-error-500" />
-    </button>
+      <option value="all">Tutti</option>
+      <option value="yes">Completato</option>
+      <option value="no">Non completato</option>
+    </select>
+    <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-ink-400 pointer-events-none" />
   </div>
 );
 
@@ -95,14 +82,14 @@ export const ComuneCatastoPage: React.FC = () => {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(() => {
-    const saved = localStorage.getItem('comune-catasto-records-per-page');
+    const saved = localStorage.getItem('comune-catasto-records-per-page-v2');
     if (saved) {
       const parsed = parseInt(saved);
-      if ([25, 50, 100, 200].includes(parsed)) {
+      if ([25, 50, 100, 200, 500, 1000].includes(parsed)) {
         return parsed;
       }
     }
-    return 25;
+    return cfg().pagine.righePratiche;
   });
   const [totalRecords, setTotalRecords] = useState(0);
   const [showModal, setShowModal] = useState(false);
@@ -122,6 +109,7 @@ export const ComuneCatastoPage: React.FC = () => {
     telefono: '',
     telefono2: '',
     mail: '',
+    mail2: '',
     tipo_incarico: '',
     tipo_pratica: '',
     comune: false,
@@ -227,12 +215,14 @@ export const ComuneCatastoPage: React.FC = () => {
     };
   }, [contextMenu.pratica]);
 
+  const ultimaRichiesta = React.useRef(0);
   const fetchData = async (customFilters?: {
     columnFilters?: typeof columnFilters;
     presetFilters?: typeof presetFilters;
     page?: number;
     perPage?: number;
   }) => {
+    const mia = ++ultimaRichiesta.current;
     try {
       setLoading(true);
 
@@ -250,12 +240,13 @@ export const ComuneCatastoPage: React.FC = () => {
         .from('comune_catasto')
         .select(`
           *,
-          stato_info:stati_generali(id, descrizione, colore),
+          stato_info:stati_generali(id, descrizione, colore, ordinamento),
           tipo_incarico_info:tipi_incarico(id, descrizione, comune, catasto),
           tipo_pratica_info:tipi_pratica(id, descrizione, blocco_fine_lavori)
         `)
         .eq('user_id', user?.id)
-        .order('stato', { ascending: true })
+        .order('stato_info(ordinamento)', { ascending: true })
+        .order('stato_modificato_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false });
 
       const searchParts: string[] = [];
@@ -351,8 +342,8 @@ export const ComuneCatastoPage: React.FC = () => {
           .select('id')
           .eq('filtro_non_pagata', 1);
         const ids = (statiNonPagata || []).map(s => s.id);
-        countQuery = countQuery.eq('saldo', false);
-        query = query.eq('saldo', false);
+        countQuery = countQuery.eq('saldo', false).not('omaggio', 'is', true).neq('stato', 4);
+        query = query.eq('saldo', false).not('omaggio', 'is', true).neq('stato', 4);
         if (ids.length > 0) {
           countQuery = countQuery.in('stato', ids);
           query = query.in('stato', ids);
@@ -363,7 +354,7 @@ export const ComuneCatastoPage: React.FC = () => {
       if (countError) {
         console.error('Errore nel conteggio:', countError);
       } else {
-        setTotalRecords(count || 0);
+        if (mia === ultimaRichiesta.current) setTotalRecords(count || 0);
       }
 
       const from = (currentPageParam - 1) * currentPerPage;
@@ -390,6 +381,8 @@ export const ComuneCatastoPage: React.FC = () => {
         if (!tipiPraticaResult.error) setTipiPratica(tipiPraticaResult.data || []);
       }
 
+      // una risposta più vecchia non deve sovrascrivere quella dell'ultimo filtro scelto
+      if (mia !== ultimaRichiesta.current) return;
       setPratiche(praticheData || []);
     } catch (error) {
       console.error('Errore:', error);
@@ -399,8 +392,9 @@ export const ComuneCatastoPage: React.FC = () => {
     }
   };
 
+  const daDashboard = React.useRef(filtroDashboardInUrl());
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !daDashboard.current) {
       fetchData();
     }
   }, [user?.id]);
@@ -429,7 +423,7 @@ export const ComuneCatastoPage: React.FC = () => {
                 stato_info:stati_generali(id, descrizione, colore),
                 tipo_incarico_info:tipi_incarico(id, descrizione, comune, catasto),
                 tipo_pratica_info:tipi_pratica(id, descrizione, blocco_fine_lavori)
-              `)
+              `).eq('user_id', user?.id)
               .eq('id', payload.new.id)
               .single();
 
@@ -452,7 +446,7 @@ export const ComuneCatastoPage: React.FC = () => {
                 stato_info:stati_generali(id, descrizione, colore),
                 tipo_incarico_info:tipi_incarico(id, descrizione, comune, catasto),
                 tipo_pratica_info:tipi_pratica(id, descrizione, blocco_fine_lavori)
-              `)
+              `).eq('user_id', user?.id)
               .eq('id', payload.new.id)
               .single();
 
@@ -561,7 +555,7 @@ export const ComuneCatastoPage: React.FC = () => {
 
   const handleRecordsPerPageChange = (newRecordsPerPage: number) => {
     setRecordsPerPage(newRecordsPerPage);
-    localStorage.setItem('comune-catasto-records-per-page', newRecordsPerPage.toString());
+    localStorage.setItem('comune-catasto-records-per-page-v2', newRecordsPerPage.toString());
     setCurrentPage(1);
     fetchData({ perPage: newRecordsPerPage, page: 1 });
   };
@@ -587,6 +581,10 @@ export const ComuneCatastoPage: React.FC = () => {
         if (newValue) {
           updateData.acconto = true;
         }
+      }
+      if (field === 'omaggio' && newValue) {
+        updateData.acconto = false;
+        updateData.saldo = false;
       }
 
       const praticaAggiornata = { ...pratica, ...updateData };
@@ -639,6 +637,26 @@ export const ComuneCatastoPage: React.FC = () => {
     }
   };
 
+  const handleCiclaPagamento = async (pratica: ComuneCatasto) => {
+    if (pratica.omaggio) return;
+    const prossimo = (statoPagamento(pratica.acconto, pratica.saldo) + 1) % 3;
+    const updateData = { acconto: prossimo >= 1, saldo: prossimo === 2 };
+
+    const { error } = await supabase
+      .from('comune_catasto')
+      .update(updateData)
+      .eq('id', pratica.id)
+      .eq('user_id', user?.id);
+
+    if (error) {
+      toast.error('Errore nell\'aggiornamento del pagamento');
+      return;
+    }
+
+    setPratiche(prev => prev.map(p => (p.id === pratica.id ? { ...p, ...updateData } : p)));
+    toast.success(['Pagamento azzerato', 'Acconto segnato', 'Saldo segnato'][prossimo]);
+  };
+
   const verificaEAggiornaStatoCompletata = async (pratica: ComuneCatasto): Promise<number | null> => {
     const tipoIncarico = pratica.tipo_incarico_info;
     if (!tipoIncarico) return null;
@@ -655,6 +673,10 @@ export const ComuneCatastoPage: React.FC = () => {
     );
 
     if (!statoCompletata || !statoInCorso) return null;
+
+    // Pratiche "In istruttoria": nessun cambio di stato automatico, si completano a mano
+    const statoIstruttoria = stati.find(stato => stato.descrizione.toLowerCase().includes('istruttoria'));
+    if (statoIstruttoria && Number(pratica.stato) === statoIstruttoria.id) return null;
 
     let tuttiIFlagCompletati = true;
 
@@ -686,14 +708,15 @@ export const ComuneCatastoPage: React.FC = () => {
 
     switch (flagName) {
       case 'comune':
-        return tipoIncarico?.comune === true;
+        return !!tipoIncarico?.comune;
       case 'catasto':
-        return tipoIncarico?.catasto === true;
+        return !!tipoIncarico?.catasto;
       case 'fine_lavori':
-        return pratica.comune === true && !pratica.tipo_pratica_info?.blocco_fine_lavori;
+        return !!pratica.comune && !pratica.tipo_pratica_info?.blocco_fine_lavori;
       case 'acconto':
-        return pratica.saldo !== true; // Disabilita acconto se saldo è flaggato
+        return !pratica.omaggio && pratica.saldo !== true; // Disabilita acconto se saldo o omaggio
       case 'saldo':
+        return !pratica.omaggio;
       case 'omaggio':
         return true;
       default:
@@ -739,12 +762,12 @@ export const ComuneCatastoPage: React.FC = () => {
     }
   };
 
-  const combineProprieta = (proprieta1: string | null | undefined, proprieta2: string | null | undefined): string => {
+  const combineProprieta = (proprieta1: string | null | undefined, proprieta2: string | null | undefined): React.ReactNode => {
     if (!proprieta1 && !proprieta2) return '-';
     if (!proprieta2) return proprieta1 || '-';
     if (!proprieta1) return proprieta2 || '-';
 
-    return `${proprieta1} / ${proprieta2}`;
+    return <><span className="block">{proprieta1}</span><span className="block">{proprieta2}</span></>;
   };
 
   const handleContextMenu = (e: React.MouseEvent, pratica: ComuneCatasto) => {
@@ -859,6 +882,9 @@ export const ComuneCatastoPage: React.FC = () => {
     }));
   };
 
+  const [rubricaFlags, setRubricaFlags] = useState<RubricaFlags>(RUBRICA_DEFAULT);
+  const { chiedi: chiediConfermaRubrica, dialog: dialogRubrica } = useConfermaRubrica();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -867,20 +893,34 @@ export const ComuneCatastoPage: React.FC = () => {
       return;
     }
 
-    if (!formData.tipo_pratica) {
-      toast.error('Il campo tipo pratica è obbligatorio');
+    const tipoIncSel = tipiIncarico.find(t => t.id === parseInt(formData.tipo_incarico));
+    const soloCatasto = !!tipoIncSel?.catasto && !tipoIncSel.comune;
+    const campiMancanti = [
+      !formData.stato && 'Stato',
+      !formData.proprieta?.trim() && 'Proprietario 1',
+      !formData.indirizzo?.trim() && 'Indirizzo',
+      !formData.citta?.trim() && 'Città',
+      !formData.tipo_incarico && 'Tipo Incarico',
+      !formData.tipo_pratica && !soloCatasto && 'Tipo Pratica',
+    ].filter(Boolean);
+    if (campiMancanti.length > 0) {
+      toast.error(`Campi obbligatori mancanti: ${campiMancanti.join(', ')}`);
       return;
     }
 
+    const flagsRubrica = await chiediConfermaRubrica(formData, rubricaFlags);
+    if (!flagsRubrica) return;
+    setRubricaFlags(flagsRubrica);
+
     setSubmitting(true);
     try {
-      const dataToSave = {
+      const dataToSave = conMail2({
         ...formData,
         stato: formData.stato ? parseInt(formData.stato) : null,
         tipo_incarico: formData.tipo_incarico ? parseInt(formData.tipo_incarico) : null,
-        tipo_pratica: formData.tipo_pratica ? parseInt(formData.tipo_pratica) : null,
+        tipo_pratica: formData.tipo_pratica && !soloCatasto ? parseInt(formData.tipo_pratica) : null,
         user_id: user?.id
-      };
+      }, editingPratica?.mail2);
 
       const tipoPraticaSelezionata = dataToSave.tipo_pratica
         ? tipiPratica.find(t => t.id === dataToSave.tipo_pratica)
@@ -1014,6 +1054,7 @@ export const ComuneCatastoPage: React.FC = () => {
                 mail: formData.mail.trim() || null,
                 telefono: formData.telefono.trim() || null,
                 telefono2: formData.telefono2.trim() || null,
+                ...mail2Opzionale(formData.mail2),
                 note: formData.note.trim() || null,
                 registrazione: 1,
                 progressivo: '',
@@ -1033,10 +1074,13 @@ export const ComuneCatastoPage: React.FC = () => {
       }
 
       await syncRubricaFromPratica(
-        formData.proprieta,
+        flagsRubrica.p1 ? formData.proprieta : null,
         formData.telefono,
         formData.mail,
-        formData.committente
+        formData.committente,
+        flagsRubrica.p2 ? formData.proprieta2 : null,
+        formData.telefono2,
+        formData.mail2
       );
 
       closeModal();
@@ -1048,6 +1092,20 @@ export const ComuneCatastoPage: React.FC = () => {
       setSubmitting(false);
     }
   };
+
+  useApriDaRicerca<ComuneCatasto>('comune_catasto', (r) => openModal(r));
+  useFiltroDashboard(!!user?.id, ({ stato, incassare, nuovo }) => {
+    if (nuovo) {
+      openModal();
+      return;
+    }
+    const cf = { ...columnFilters, stato };
+    const pf = { ...presetFilters, nonPagate: incassare };
+    setColumnFilters(cf);
+    setPresetFilters(pf);
+    setCurrentPage(1);
+    fetchData({ columnFilters: cf, presetFilters: pf, page: 1 });
+  });
 
   const openModal = (pratica?: ComuneCatasto) => {
     if (pratica) {
@@ -1062,6 +1120,7 @@ export const ComuneCatastoPage: React.FC = () => {
         telefono: pratica.telefono || '',
         telefono2: pratica.telefono2 || '',
         mail: pratica.mail || '',
+        mail2: pratica.mail2 || '',
         tipo_incarico: pratica.tipo_incarico?.toString() || '',
         tipo_pratica: pratica.tipo_pratica?.toString() || '',
         comune: pratica.comune,
@@ -1086,6 +1145,7 @@ export const ComuneCatastoPage: React.FC = () => {
         telefono: '',
         telefono2: '',
         mail: '',
+        mail2: '',
         tipo_incarico: '',
         tipo_pratica: '',
         comune: false,
@@ -1116,6 +1176,7 @@ export const ComuneCatastoPage: React.FC = () => {
       telefono: '',
       telefono2: '',
       mail: '',
+      mail2: '',
       tipo_incarico: '',
       tipo_pratica: '',
       comune: false,
@@ -1138,20 +1199,24 @@ export const ComuneCatastoPage: React.FC = () => {
     return tipiPratica.find(tipo => tipo.id === parseInt(formData.tipo_pratica));
   };
 
+  const tipoIncaricoForm = getTipoIncaricoSelezionato();
+  const tipoPraticaDisabilitato = !!tipoIncaricoForm?.catasto && !tipoIncaricoForm.comune;
+
   const isFlagAbilitato = (flagName: 'comune' | 'catasto' | 'fine_lavori' | 'acconto' | 'saldo' | 'omaggio') => {
     const tipoSelezionato = getTipoIncaricoSelezionato();
     const tipoPraticaSelezionata = getTipoPraticaSelezionata();
 
     switch (flagName) {
       case 'comune':
-        return tipoSelezionato?.comune === true;
+        return !!tipoSelezionato?.comune;
       case 'catasto':
-        return tipoSelezionato?.catasto === true;
+        return !!tipoSelezionato?.catasto;
       case 'fine_lavori':
-        return formData.comune === true && !tipoPraticaSelezionata?.blocco_fine_lavori;
+        return !!formData.comune && !tipoPraticaSelezionata?.blocco_fine_lavori;
       case 'acconto':
-        return formData.saldo !== true; // Disabilita acconto se saldo è flaggato
+        return !formData.omaggio && formData.saldo !== true; // Disabilita acconto se saldo o omaggio
       case 'saldo':
+        return !formData.omaggio;
       case 'omaggio':
         return true;
       default:
@@ -1176,6 +1241,10 @@ export const ComuneCatastoPage: React.FC = () => {
 
       if (!tipoSelezionato?.catasto) {
         nuovoFormData.catasto = false;
+      }
+
+      if (tipoSelezionato?.catasto && !tipoSelezionato.comune) {
+        nuovoFormData.tipo_pratica = '';
       }
 
       return nuovoFormData;
@@ -1214,6 +1283,17 @@ export const ComuneCatastoPage: React.FC = () => {
     }));
   };
 
+  const handleOmaggioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nuovoOmaggio = e.target.checked;
+
+    setFormData(prev => ({
+      ...prev,
+      omaggio: nuovoOmaggio,
+      acconto: nuovoOmaggio ? false : prev.acconto,
+      saldo: nuovoOmaggio ? false : prev.saldo
+    }));
+  };
+
   const getStatoStyle = (stato: StatoGenerale | undefined) => {
     if (!stato || !stato.colore) return 'bg-ink-100 text-ink-800';
     return 'text-white';
@@ -1228,16 +1308,16 @@ export const ComuneCatastoPage: React.FC = () => {
     return (
       <div
         className={`relative inline-flex items-center justify-center w-8 h-8 rounded-full transition-all duration-150 ${enabled ? 'hover:scale-105' : ''
-          } ${value
-            ? 'bg-topo-100 hover:bg-topo-200'
-            : 'bg-ink-100 hover:bg-ink-200'
-          } ${!enabled ? 'opacity-70 cursor-not-allowed border-2 border-dashed border-ink-300' : ''
+          } border-[1.5px] ${value
+            ? 'bg-topo-100 hover:bg-topo-200 border-topo-500'
+            : 'bg-ink-100 hover:bg-ink-200 border-ink-400'
+          } ${!enabled ? 'opacity-70 cursor-not-allowed border-dashed !border-ink-300' : ''
           }`}
       >
         {value ? (
-          <Check className="w-4 h-4 text-topo-600" />
+          <Check className="w-4 h-4 text-topo-600" strokeWidth={2.5} />
         ) : (
-          <X className="w-4 h-4 text-ink-400" />
+          <X className="w-4 h-4 text-ink-500" strokeWidth={2} />
         )}
       </div>
     );
@@ -1338,7 +1418,7 @@ export const ComuneCatastoPage: React.FC = () => {
         {/* Tabella - Container con altezza flessibile e scroll interno */}
         <div className="card card-flush p-0 flex-1" style={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
           <div className="overflow-x-auto h-full overflow-y-auto">
-            <table className="w-full table" style={{ minHeight: '400px' }}>
+            <table className="w-full table tabella-distesa" style={{ minHeight: '400px' }}>
               <thead className="table-header">
                 <tr>
                   <th className="table-cell text-left">
@@ -1375,10 +1455,7 @@ export const ComuneCatastoPage: React.FC = () => {
                     Fine Lavori
                   </th>
                   <th className="table-cell text-center">
-                    Acconto
-                  </th>
-                  <th className="table-cell text-center">
-                    Saldo
+                    Pagamento
                   </th>
                 </tr>
                 {/* Riga filtri inline */}
@@ -1563,38 +1640,53 @@ export const ComuneCatastoPage: React.FC = () => {
                     <TriStateFilter
                       value={columnFilters.comune}
                       onChange={(v) => handleApplyFilter({ comune: v })}
+                      testId="filtro-comune-select"
                     />
                   </td>
                   <td className="px-2 py-1.5 text-center">
                     <TriStateFilter
                       value={columnFilters.catasto}
                       onChange={(v) => handleApplyFilter({ catasto: v })}
+                      testId="filtro-catasto-select"
                     />
                   </td>
                   <td className="px-2 py-1.5 text-center">
                     <TriStateFilter
                       value={columnFilters.fine_lavori}
                       onChange={(v) => handleApplyFilter({ fine_lavori: v })}
+                      testId="filtro-fine-lavori-select"
                     />
                   </td>
                   <td className="px-2 py-1.5 text-center">
-                    <TriStateFilter
-                      value={columnFilters.acconto}
-                      onChange={(v) => handleApplyFilter({ acconto: v })}
-                    />
-                  </td>
-                  <td className="px-2 py-1.5 text-center">
-                    <TriStateFilter
-                      value={columnFilters.saldo}
-                      onChange={(v) => handleApplyFilter({ saldo: v })}
-                    />
+                    <div className="relative">
+                    <select
+                      value={columnFilters.saldo === 'yes' ? 'saldato' : columnFilters.acconto === 'yes' ? 'acconto' : columnFilters.acconto === 'no' ? 'da_pagare' : 'all'}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        handleApplyFilter(
+                          v === 'saldato' ? { acconto: 'all', saldo: 'yes' }
+                            : v === 'acconto' ? { acconto: 'yes', saldo: 'no' }
+                            : v === 'da_pagare' ? { acconto: 'no', saldo: 'no' }
+                            : { acconto: 'all', saldo: 'all' }
+                        );
+                      }}
+                      className="w-full min-w-[84px] text-xs px-2 py-1.5 border border-ink-300 rounded-md bg-white text-ink-700 appearance-none pr-6 focus:outline-none focus:ring-2 focus:ring-signal-500/20 focus:border-signal-500"
+                      data-testid="filtro-pagamento-select"
+                    >
+                      <option value="all">Tutti</option>
+                      <option value="da_pagare">Da pagare</option>
+                      <option value="acconto">Acconto</option>
+                      <option value="saldato">Saldato</option>
+                    </select>
+                    <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 w-3 h-3 text-ink-400 pointer-events-none" />
+                    </div>
                   </td>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-ink-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={13} className="px-6 py-8 text-center text-ink-500">
+                    <td colSpan={12} className="px-6 py-8 text-center text-ink-500">
                       <div className="flex items-center justify-center">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-signal-500"></div>
                         <span className="ml-2">Caricamento...</span>
@@ -1603,13 +1695,13 @@ export const ComuneCatastoPage: React.FC = () => {
                   </tr>
                 ) : pratiche.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-6 py-8 text-center text-ink-500">
+                    <td colSpan={12} className="px-6 py-8 text-center text-ink-500">
                       Nessuna pratica trovata
                     </td>
                   </tr>
                 ) : (
                   pratiche.map((pratica) => (
-                    <tr key={pratica.id} className="table-row hover:bg-ink-50" onContextMenu={(e) => handleContextMenu(e, pratica)}>
+                    <tr key={pratica.id} className="table-row cursor-pointer hover:bg-ink-50" onContextMenu={(e) => handleContextMenu(e, pratica)} onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest('button, a, input, select, textarea')) openModal(pratica); }} title="Doppio clic per modificare" data-testid={`riga-pratica-${pratica.id}`}>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${getStatoStyle(pratica.stato_info)}`}
@@ -1618,19 +1710,19 @@ export const ComuneCatastoPage: React.FC = () => {
                           {pratica.stato_info?.descrizione || 'N/A'}
                         </span>
                       </td>
-                      <td className="table-cell font-medium text-ink-700">
+                      <td className="table-cell text-ink-600">
                         {pratica.committente}
                       </td>
                       <td className="table-cell text-ink-600">
                         {combineProprieta(pratica.proprieta, pratica.proprieta2)}
                       </td>
-                      <td className="table-cell text-ink-600 max-w-xs truncate">
+                      <td className="table-cell text-ink-600">
                         {pratica.citta || '-'}
                       </td>
-                      <td className="table-cell text-ink-600 max-w-xs truncate">
+                      <td className="table-cell text-ink-600">
                         {pratica.indirizzo || '-'}
                       </td>
-                      <td className="table-cell text-ink-600 max-w-xs truncate">
+                      <td className="table-cell text-ink-600">
                         {pratica.note || '-'}
                       </td>
                       <td className="table-cell text-ink-600">
@@ -1693,22 +1785,12 @@ export const ComuneCatastoPage: React.FC = () => {
                         </button>
                       </td>
                       <td className="table-cell text-center">
-                        <button
-                          onClick={() => handleToggleField(pratica, 'acconto')}
-                          className="transition-colors cursor-pointer"
-                          title="Clicca per cambiare stato"
-                        >
-                          {renderToggleButton(pratica.acconto, pratica.saldo !== true)}
-                        </button>
-                      </td>
-                      <td className="table-cell text-center">
-                        <button
-                          onClick={() => handleToggleField(pratica, 'saldo')}
-                          className="transition-colors cursor-pointer"
-                          title="Clicca per cambiare stato"
-                        >
-                          {renderToggleButton(pratica.saldo, true)}
-                        </button>
+                        <PagamentoToggle
+                          stato={statoPagamento(pratica.acconto, pratica.saldo)}
+                          omaggio={pratica.omaggio}
+                          onClick={() => handleCiclaPagamento(pratica)}
+                          testId={`pagamento-${pratica.id}`}
+                        />
                       </td>
                     </tr>
                   ))
@@ -1737,6 +1819,8 @@ export const ComuneCatastoPage: React.FC = () => {
                       <option value={50}>50</option>
                       <option value={100}>100</option>
                       <option value={200}>200</option>
+                      <option value={500}>500</option>
+                      <option value={1000}>1000</option>
                     </select>
                   </div>
 
@@ -1814,6 +1898,7 @@ export const ComuneCatastoPage: React.FC = () => {
         </div>
 
         {/* Modal Nuova Pratica */}
+        {dialogRubrica}
         {showModal && (
           <div className="modal-overlay">
             <div className="modal w-full max-w-4xl modal-scroll-container">
@@ -1831,6 +1916,14 @@ export const ComuneCatastoPage: React.FC = () => {
               </div>
 
               <form onSubmit={handleSubmit} className="modal-body">
+                <ContattiPratica
+                  className="mb-6"
+                  valori={formData}
+                  onInputChange={handleInputChange}
+                  onPatch={(patch) => setFormData(prev => ({ ...prev, ...patch }))}
+                  rubrica={rubricaFlags}
+                  onRubricaChange={setRubricaFlags}
+                />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Prima colonna */}
                   <div className="space-y-4">
@@ -1838,26 +1931,24 @@ export const ComuneCatastoPage: React.FC = () => {
                       <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
                         Committente *
                       </label>
-                      <input
-                        type="text"
-                        name="committente"
+                      <CommittenteSelect
                         value={formData.committente}
-                        onChange={handleInputChange}
-                        placeholder="Nome committente"
-                        className="input w-full"
-                        required
+                        onChange={(v) => setFormData((prev) => ({ ...prev, committente: v }))}
+                        testId="comune-committente-input"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
-                        Stato
+                        Stato *
                       </label>
                       <div className="relative">
                         <select
                           name="stato"
                           value={formData.stato}
                           onChange={handleInputChange}
+                          required
+                          data-testid="pratica-stato-select"
                           className="input w-full pr-8 appearance-none"
                         >
                           <option value="">-- Seleziona stato --</option>
@@ -1873,62 +1964,28 @@ export const ComuneCatastoPage: React.FC = () => {
 
                     <div>
                       <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
-                        Proprietà
+                        Indirizzo *
                       </label>
-                      <RubricaAutocomplete
-                        value={formData.proprieta}
-                        onChange={(val) => setFormData(prev => ({ ...prev, proprieta: val }))}
-                        onSelect={(contatto: Rubrica) => {
-                          setFormData(prev => ({
-                            ...prev,
-                            proprieta: contatto.nominativo,
-                            telefono: contatto.telefono || '',
-                            mail: contatto.email || ''
-                          }));
-                        }}
-                        placeholder="Nome proprietà"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
-                        Proprietà 2
-                      </label>
-                      <input
-                        type="text"
-                        name="proprieta2"
-                        value={formData.proprieta2}
-                        onChange={handleInputChange}
-                        placeholder="Nome secondo proprietario"
-                        className="input w-full"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
-                        Indirizzo
-                      </label>
-                      <input
-                        type="text"
-                        name="indirizzo"
+                      <CommittenteSelect
+                        campo="indirizzo"
                         value={formData.indirizzo}
-                        onChange={handleInputChange}
+                        onChange={(v) => setFormData((prev) => ({ ...prev, indirizzo: v }))}
+                        onCitta={(c) => setFormData((prev) => ({ ...prev, citta: c }))}
+                        testId="pratica-indirizzo-input"
                         placeholder="Indirizzo"
-                        className="input w-full"
                       />
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
-                        Città
+                        Città *
                       </label>
-                      <input
-                        type="text"
-                        name="citta"
+                      <CommittenteSelect
+                        campo="citta"
                         value={formData.citta}
-                        onChange={handleInputChange}
+                        onChange={(v) => setFormData((prev) => ({ ...prev, citta: v }))}
+                        testId="pratica-citta-input"
                         placeholder="Città"
-                        className="input w-full"
                       />
                     </div>
                   </div>
@@ -1937,55 +1994,15 @@ export const ComuneCatastoPage: React.FC = () => {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
-                        Telefono
-                      </label>
-                      <input
-                        type="tel"
-                        name="telefono"
-                        value={formData.telefono}
-                        onChange={handleInputChange}
-                        placeholder="XXX XXX XXXX"
-                        className="input w-full"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
-                        Telefono 2
-                      </label>
-                      <input
-                        type="tel"
-                        name="telefono2"
-                        value={formData.telefono2}
-                        onChange={handleInputChange}
-                        placeholder="XXX XXX XXXX"
-                        className="input w-full"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        name="mail"
-                        value={formData.mail}
-                        onChange={handleInputChange}
-                        placeholder="Indirizzo email"
-                        className="input w-full"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
-                        Tipo Incarico
+                        Tipo Incarico *
                       </label>
                       <div className="relative">
                         <select
                           name="tipo_incarico"
                           value={formData.tipo_incarico}
                           onChange={handleTipoIncaricoChange}
+                          required
+                          data-testid="pratica-tipo-incarico-select"
                           className="input w-full pr-8 appearance-none"
                         >
                           <option value="">-- Seleziona tipo incarico --</option>
@@ -2001,17 +2018,19 @@ export const ComuneCatastoPage: React.FC = () => {
 
                     <div>
                       <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">
-                        Tipo Pratica *
+                        Tipo Pratica {!tipoPraticaDisabilitato && '*'}
                       </label>
                       <div className="relative">
                         <select
                           name="tipo_pratica"
-                          value={formData.tipo_pratica}
+                          value={tipoPraticaDisabilitato ? '' : formData.tipo_pratica}
                           onChange={handleTipoPraticaChange}
-                          required
-                          className="input w-full pr-8 appearance-none"
+                          required={!tipoPraticaDisabilitato}
+                          disabled={tipoPraticaDisabilitato}
+                          data-testid="pratica-tipo-pratica-select"
+                          className="input w-full pr-8 appearance-none disabled:cursor-not-allowed disabled:bg-ink-50 disabled:text-ink-400"
                         >
-                          <option value="">-- Seleziona tipo pratica --</option>
+                          <option value="">{tipoPraticaDisabilitato ? 'Non previsto per Catasto' : '-- Seleziona tipo pratica --'}</option>
                           {tipiPratica.map((tipo) => (
                             <option key={tipo.id} value={tipo.id}>
                               {tipo.descrizione}
@@ -2126,7 +2145,7 @@ export const ComuneCatastoPage: React.FC = () => {
                       <div className="grid grid-cols-3 gap-4">
                         <label className={`flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-150 border-2 ${formData.acconto
                             ? 'bg-info-50 border-info-500 text-info-700 cursor-pointer'
-                            : formData.saldo
+                            : (formData.saldo || formData.omaggio)
                             ? 'bg-ink-50 border-ink-200 text-ink-400 cursor-not-allowed opacity-50'
                             : 'bg-ink-50 border-ink-200 text-ink-600 hover:bg-ink-100 cursor-pointer'
                           }`}>
@@ -2135,7 +2154,7 @@ export const ComuneCatastoPage: React.FC = () => {
                             name="acconto"
                             checked={formData.acconto}
                             onChange={handleInputChange}
-                            disabled={formData.saldo}
+                            disabled={formData.saldo || formData.omaggio}
                             className="sr-only"
                           />
                           <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${formData.acconto
@@ -2153,6 +2172,8 @@ export const ComuneCatastoPage: React.FC = () => {
 
                         <label className={`flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-150 border-2 ${formData.saldo
                             ? 'bg-topo-50 border-topo-500 text-topo-700 cursor-pointer'
+                            : formData.omaggio
+                            ? 'bg-ink-50 border-ink-200 text-ink-400 cursor-not-allowed opacity-50'
                             : 'bg-ink-50 border-ink-200 text-ink-600 hover:bg-ink-100 cursor-pointer'
                           }`}>
                           <input
@@ -2160,6 +2181,7 @@ export const ComuneCatastoPage: React.FC = () => {
                             name="saldo"
                             checked={formData.saldo}
                             onChange={handleSaldoChange}
+                            disabled={formData.omaggio}
                             className="sr-only"
                           />
                           <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${formData.saldo
@@ -2183,7 +2205,7 @@ export const ComuneCatastoPage: React.FC = () => {
                             type="checkbox"
                             name="omaggio"
                             checked={formData.omaggio}
-                            onChange={handleInputChange}
+                            onChange={handleOmaggioChange}
                             className="sr-only"
                           />
                           <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-150 ${formData.omaggio
@@ -2251,20 +2273,6 @@ export const ComuneCatastoPage: React.FC = () => {
       {/* Menu Contestuale */}
       {contextMenu.pratica && (
         <ContextMenu x={contextMenu.x} y={contextMenu.y}>
-          <button
-            onClick={() => handleContextMenuAction('edit', contextMenu.pratica!)}
-            className="context-menu-item"
-          >
-            <Edit className="w-4 h-4 text-signal-500" />
-            Modifica
-          </button>
-          <button
-            onClick={() => handleContextMenuAction('status', contextMenu.pratica!)}
-            className="context-menu-item"
-          >
-            <ArrowRightCircle className="w-4 h-4 text-warning-500" />
-            Cambia stato
-          </button>
           <button
             onClick={() => handleContextMenuAction('contact', contextMenu.pratica!)}
             className="context-menu-item"
@@ -2340,49 +2348,7 @@ export const ComuneCatastoPage: React.FC = () => {
 
       {/* Modal Contatto da Menu Contestuale */}
       {showContextMenuActionModal === 'contatto' && selectedPraticaForContextMenu && (
-        <div className="modal-overlay">
-          <div className="modal w-full max-w-md">
-            <div className="modal-header">
-              <h3 className="text-lg font-display font-semibold text-ink-700">
-                Contatto - {selectedPraticaForContextMenu.committente}
-              </h3>
-            </div>
-            <div className="modal-body">
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">Proprietario</label>
-                  <p className="text-ink-700">{selectedPraticaForContextMenu.proprieta || '-'}</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">Telefono</label>
-                  <p className="text-ink-700 font-mono">{selectedPraticaForContextMenu.telefono || '-'}</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">Email</label>
-                  <p className="text-ink-700">{selectedPraticaForContextMenu.mail || '-'}</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-ink-500 uppercase tracking-wider mb-1">Indirizzo</label>
-                  <p className="text-ink-700">
-                    {selectedPraticaForContextMenu.indirizzo || '-'}{selectedPraticaForContextMenu.citta ? `, ${selectedPraticaForContextMenu.citta}` : ''}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowContextMenuActionModal(null);
-                  setSelectedPraticaForContextMenu(null);
-                }}
-                className="btn btn-ghost"
-              >
-                Chiudi
-              </button>
-            </div>
-          </div>
-        </div>
+        <ContattiPraticaModal pratica={selectedPraticaForContextMenu} onClose={() => { setShowContextMenuActionModal(null); setSelectedPraticaForContextMenu(null); }} />
       )}
     </div>
   );
