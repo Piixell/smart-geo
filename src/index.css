@@ -598,7 +598,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .pagina-animata { animation: fadeInUp 300ms ease-out; }
-  .modal-overlay > div { animation: bounceIn 350ms ease-out; }
+  .modal-overlay > div, .form-animato { animation: bounceIn 350ms ease-out; }
 }
 
 @keyframes crescitaBarraDashboard {

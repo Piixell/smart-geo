@@ -1,5 +1,6 @@
 import { richiediIdUtente } from '../../services/utente';
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save, User, Home, Plus, Trash2, Printer, FileCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { supabase } from '../../services/supabase';
@@ -101,9 +102,9 @@ export const PreventivoForm: React.FC<Props> = ({ iniziale, onClose, onSaved }) 
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-900/45 backdrop-blur-sm p-2 sm:p-6" data-testid="preventivo-form">
-      <div className="w-full max-w-5xl rounded-xl bg-white shadow-xl dark:bg-gray-800">
+      <div className="form-animato w-full max-w-5xl rounded-xl bg-white shadow-xl dark:bg-gray-800">
         <header className="flex items-center justify-between border-b border-ink-100 px-6 py-4 dark:border-gray-700">
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">{p.id ? `Preventivo n° ${p.numero} - ${nomeCliente(p.cliente)}` : `Nuovo preventivo n° ${p.numero}`}</h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-700" data-testid="preventivo-chiudi"><X className="h-6 w-6" /></button>
@@ -215,6 +216,6 @@ export const PreventivoForm: React.FC<Props> = ({ iniziale, onClose, onSaved }) 
           <button onClick={() => salva()} disabled={salvando} className="btn btn-primary flex items-center gap-2" data-testid="preventivo-salva"><Save className="h-4 w-4" /> Salva</button>
         </footer>
       </div>
-    </div>
+    </div>, document.body
   );
 };
