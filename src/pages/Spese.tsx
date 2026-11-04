@@ -58,16 +58,6 @@ export const Spese: React.FC = () => {
         query = query.ilike('descrizione', `%${searchTerm}%`);
       }
 
-      // Filtro solo non pagate
-      if (filtriAttivi.nonPagate) {
-        query = query.eq('pagamento', false).neq('stato_id', 1);
-      }
-
-      // Filtro solo pronte da pagare
-      if (filtriAttivi.pronteDaPagare) {
-        query = query.eq('pagamento_pronto', true);
-      }
-
       // Filtro data da
       if (dataDa) {
         query = query.gte('data_scadenza', dataDa);
@@ -99,7 +89,11 @@ export const Spese: React.FC = () => {
         return ordine(a) - ordine(b);
       };
 
-      setSpese((data || []).filter((s) => !isAccontoFuturo(s.descrizione)).sort(ordinaSpese));
+      setSpese((data || []).filter((s) =>
+        !isAccontoFuturo(s.descrizione) &&
+        (!filtriAttivi.nonPagate || !s.pagamento) &&
+        (!filtriAttivi.pronteDaPagare || statoPagamentoDi(s) === 'pronta')
+      ).sort(ordinaSpese));
     } catch (error) {
       console.error('Errore:', error);
       toast.error('Errore nel caricamento dei dati');
@@ -125,7 +119,6 @@ export const Spese: React.FC = () => {
     setDataDa('');
     setDataA('');
     setAnnoFiltro(new Date().getFullYear().toString());
-    fetchSpese();
   };
 
   const handleFilterToggle = (filterName: keyof typeof filtriAttivi) => {
@@ -883,4 +876,4 @@ export const Spese: React.FC = () => {
       )}
     </div>
   );
-}; 
+};
