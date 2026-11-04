@@ -343,7 +343,7 @@
   }
 
   .modal {
-    @apply bg-white rounded-lg shadow-xl border border-ink-200 animate-scale-in overflow-y-auto;
+    @apply bg-white rounded-lg shadow-xl border border-ink-200 overflow-y-auto;
     max-height: calc(100dvh - 2rem);
   }
 
@@ -583,4 +583,32 @@
   :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) > tr.riga-scheda > td.campo-largo { grid-column: 1 / -1; }
   :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) > tr > td[colspan] { display: block; }
   :is(table.tabella-distesa, table.tabella-mobile) > :is(tbody, tfoot) > tr.riga-scheda > td > div { justify-content: flex-start; flex-wrap: wrap; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bounceIn {
+  0% { opacity: 0; transform: scale(0.92); }
+  65% { opacity: 1; transform: scale(1.015); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pagina-animata { animation: fadeInUp 300ms ease-out; }
+  .modal-overlay > div { animation: bounceIn 350ms ease-out; }
+}
+
+@keyframes crescitaBarraDashboard {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .barra-dashboard {
+    transform-origin: bottom;
+    animation: crescitaBarraDashboard 650ms ease-out;
+  }
 }

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Building2, FileCheck, FolderOpen, FileText, ChevronRight } from 'lucide-react';
 import { STATI_PREVENTIVO } from '../../utils/preventivi';
 import { giorniFermo, giorniScadenze, type DashboardData } from '../../utils/dashboardData';
-import { Riquadro, PERCORSO, euro } from './Widgets';
+import { Riquadro, PERCORSO, euro, NumeroAnimato } from './Widgets';
 
 const AZIONI = [
   { label: 'Pratica comunale / catastale', to: '/comune-catasto?nuovo=1', Icona: Building2, id: 'comune' },
@@ -35,7 +35,7 @@ export const RiepilogoPreventivi: React.FC<{ dati: DashboardData['preventivi']; 
     <div className="grid grid-cols-4 divide-x divide-ink-100 border-b border-ink-100 dark:divide-gray-700 dark:border-gray-700">
       {STATI_PREVENTIVO.map((s) => (
         <div key={s.id} className="px-3 py-4 text-center" data-testid={`preventivi-conteggio-${s.id}`}>
-          <div className="text-2xl font-bold tabular-nums text-ink-900 dark:text-white">{dati.conteggi[s.id] || 0}</div>
+          <div className="text-2xl font-bold tabular-nums text-ink-900 dark:text-white"><NumeroAnimato valore={dati.conteggi[s.id] || 0} /></div>
           <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-ink-500">{s.label}</div>
         </div>
       ))}
@@ -43,11 +43,11 @@ export const RiepilogoPreventivi: React.FC<{ dati: DashboardData['preventivi']; 
     <div className="divide-y divide-ink-100 text-sm dark:divide-gray-700">
       <div className="flex items-center justify-between px-5 py-2.5" data-testid="preventivi-in-attesa">
         <span className="text-ink-600 dark:text-gray-300">In attesa di risposta (inviati)</span>
-        <span className="font-semibold tabular-nums text-ink-900 dark:text-white">{euro(dati.inAttesa, 2)}</span>
+        <span className="font-semibold tabular-nums text-ink-900 dark:text-white"><NumeroAnimato valore={dati.inAttesa} valuta decimali={2} /></span>
       </div>
       <div className="flex items-center justify-between bg-ink-50 px-5 py-2.5 font-bold dark:bg-gray-700/50" data-testid="preventivi-accettati-anno">
         <span className="text-ink-800 dark:text-gray-100">Accettati nel {anno}</span>
-        <span className="tabular-nums text-ink-900 dark:text-white">{euro(dati.accettatiAnno, 2)}</span>
+        <span className="tabular-nums text-ink-900 dark:text-white"><NumeroAnimato valore={dati.accettatiAnno} valuta decimali={2} /></span>
       </div>
     </div>
   </Riquadro>

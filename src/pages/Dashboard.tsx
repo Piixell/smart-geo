@@ -65,7 +65,8 @@ export const Dashboard: React.FC = () => {
             <Kpi label="Da incassare" valore={dati.daIncassare.totale} dettaglio={perSezione(dati.daIncassare, INCASSARE)} to="/varie" accento="bg-emerald-500" testId="kpi-da-incassare" />
             <Kpi
               label={`Fatturato ${anno}`}
-              valore={euro(dati.fatturatoAnno)}
+              valore={dati.fatturatoAnno}
+              valuta
               dettaglio={[{ label: 'Onorario', valore: euro(dati.onorarioAnno, 2) }]}
               to="/contabilita"
               accento="bg-signal-500"

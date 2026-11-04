@@ -1,10 +1,35 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { MESI, type PraticaDash, type Sezione } from '../../utils/dashboardData';
 
 export const euro = (n: number, dec = 0) =>
   new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', minimumFractionDigits: dec, maximumFractionDigits: dec }).format(n);
+
+export const NumeroAnimato: React.FC<{ valore: number; valuta?: boolean; decimali?: number }> = ({ valore, valuta = false, decimali = 0 }) => {
+  const [visualizzato, setVisualizzato] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches ? valore : 0);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setVisualizzato(valore);
+      return;
+    }
+    let frame = 0;
+    let inizio: number | undefined;
+    const aggiorna = (tempo: number) => {
+      inizio ??= tempo;
+      const progresso = Math.min((tempo - inizio) / 650, 1);
+      setVisualizzato(valore * (1 - Math.pow(1 - progresso, 3)));
+      if (progresso < 1) frame = requestAnimationFrame(aggiorna);
+    };
+    frame = requestAnimationFrame(aggiorna);
+    return () => cancelAnimationFrame(frame);
+  }, [valore]);
+
+  const testo = valuta ? euro(visualizzato, decimali) : Math.round(visualizzato).toLocaleString('it-IT');
+  const finale = valuta ? euro(valore, decimali) : valore.toLocaleString('it-IT');
+  return <span aria-label={finale}><span aria-hidden="true">{testo}</span></span>;
+};
 
 export const PERCORSO: Record<Sezione, string> = { comune: '/comune-catasto', varie: '/varie', ape: '/ape' };
 const ETICHETTA: Record<Sezione, string> = { comune: 'Comunale/Catastale', varie: 'Varia', ape: 'APE' };
@@ -26,7 +51,7 @@ export const Riquadro: React.FC<{ titolo: string; azione?: { label: string; to: 
   );
 };
 
-export const Kpi: React.FC<{ label: string; valore: string | number; nota?: string; dettaglio?: { label: string; valore: string | number; to?: string }[]; to: string; accento: string; testId: string }> = ({ label, valore, nota, dettaglio, to, accento, testId }) => {
+export const Kpi: React.FC<{ label: string; valore: number; valuta?: boolean; nota?: string; dettaglio?: { label: string; valore: string | number; to?: string }[]; to: string; accento: string; testId: string }> = ({ label, valore, valuta, nota, dettaglio, to, accento, testId }) => {
   const navigate = useNavigate();
   return (
     <div className="card group text-left transition-shadow hover:shadow-md" data-testid={testId}>
@@ -35,7 +60,7 @@ export const Kpi: React.FC<{ label: string; valore: string | number; nota?: stri
           <span className={`h-2 w-2 rounded-full ${accento}`} />
           <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">{label}</span>
         </div>
-        <div className="mt-3 text-3xl font-bold tabular-nums text-ink-900 dark:text-white">{valore}</div>
+        <div className="mt-3 text-3xl font-bold tabular-nums text-ink-900 dark:text-white"><NumeroAnimato valore={valore} valuta={valuta} /></div>
       </button>
       {dettaglio && (
         <dl className="mt-3 space-y-1 border-t border-ink-100 pt-3 dark:border-gray-700">
@@ -76,8 +101,8 @@ export const GraficoMesi: React.FC<{ anno: number[]; precedente: number[]; annoC
         {MESI.map((m, i) => (
           <div key={m} className="flex h-full flex-1 flex-col items-center justify-end gap-1" title={`${m}: ${euro(anno[i])} (${annoCorrente - 1}: ${euro(precedente[i])})`} data-testid={`grafico-mese-${i + 1}`}>
             <div className="flex h-full w-full items-end justify-center gap-0.5">
-              <div className="w-1/2 rounded-t bg-ink-200 dark:bg-gray-600" style={{ height: `${(precedente[i] / max) * 100}%` }} />
-              <div className="w-1/2 rounded-t bg-signal-500 transition-all" style={{ height: `${(anno[i] / max) * 100}%` }} />
+              <div className="barra-dashboard w-1/2 rounded-t bg-ink-200 dark:bg-gray-600" style={{ height: `${(precedente[i] / max) * 100}%` }} />
+              <div className="barra-dashboard w-1/2 rounded-t bg-signal-500 transition-all" style={{ height: `${(anno[i] / max) * 100}%` }} />
             </div>
             <span className="text-[10px] font-medium uppercase text-ink-500">{m.slice(0, 3)}</span>
           </div>

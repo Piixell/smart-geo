@@ -1,6 +1,6 @@
 import toast from 'react-hot-toast';
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { caricaImpostazioni, useImpostazioni } from '../../services/impostazioni';
@@ -20,6 +20,7 @@ html:not(.dark) .app-sfondo{background-color:${aspetto.coloreSfondo}!important}`
 };
 
 export const AppLayout: React.FC = () => {
+  const { pathname } = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pronto, setPronto] = useState(false);
 
@@ -47,7 +48,7 @@ export const AppLayout: React.FC = () => {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header onMenuClick={() => setSidebarOpen(true)} />
         <main className="app-sfondo flex-1 overflow-y-auto overflow-x-hidden bg-ink-50">
-          <div className="w-full mx-auto px-4 py-3">
+          <div key={pathname} className="pagina-animata w-full mx-auto px-4 py-3">
             <Outlet />
           </div>
         </main>
